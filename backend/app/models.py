@@ -166,3 +166,30 @@ class SavedView(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(100))
     config: Mapped[dict] = mapped_column(JSON)
+
+
+class EntraConnection(Base):
+    __tablename__ = "entra_connections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    tenant_id: Mapped[str] = mapped_column(String(36), unique=True)
+    client_id: Mapped[str] = mapped_column(String(36))
+    secret: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class EntraIdentity(Base):
+    __tablename__ = "entra_identities"
+    connection_id: Mapped[int] = mapped_column(ForeignKey("entra_connections.id"), primary_key=True)
+    object_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+
+class EntraFlow(Base):
+    __tablename__ = "entra_flows"
+    digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("entra_connections.id"))
+    browser_digest: Mapped[str] = mapped_column(String(64))
+    nonce: Mapped[str] = mapped_column(String(100))
+    verifier: Mapped[str] = mapped_column(String(100))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)

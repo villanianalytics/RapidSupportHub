@@ -30,6 +30,18 @@ export function Account({
   const [error, setError] = useState(""),
     [success, setSuccess] = useState(false),
     [busy, setBusy] = useState(false);
+  if (user.auth_method === "entra")
+    return (
+      <section className="panel description account-panel">
+        <h1>Account & security</h1>
+        <p>Signed in with Microsoft as {user.name}.</p>
+        <p>
+          Your Microsoft password and multifactor authentication are managed by
+          your organization. Portal roles and client access are managed by your
+          support administrator.
+        </p>
+      </section>
+    );
   return (
     <>
       <div className="page-heading">

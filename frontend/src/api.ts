@@ -1,4 +1,5 @@
 export type User = {
+  auth_method?: "local" | "entra";
   id: number;
   username: string;
   name: string;

@@ -37,6 +37,7 @@ import {
 } from "./api";
 import { Admin } from "./settings";
 import { Reports } from "./reports";
+import { MicrosoftSignIn } from "./sso";
 import {
   Account,
   Notifications,
@@ -236,6 +237,7 @@ function Auth({
               ? "All existing sessions will be replaced."
               : "Need access? Contact your support administrator."}
           </p>
+          {!user && <MicrosoftSignIn />}
         </form>
       </div>
     </div>
@@ -441,7 +443,7 @@ function App() {
           </span>
         </a>
         <div className="workspace-label">
-          WORKSPACE <span>v0.2</span>
+          WORKSPACE <span>v0.3</span>
         </div>
         <nav>
           {nav.map(([key, text, Icon]) => (

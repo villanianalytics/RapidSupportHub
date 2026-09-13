@@ -18,6 +18,8 @@ In-app notifications are enabled. Email ingestion and delivery remain deferred; 
 
 ## Daily operations (v0.2)
 
+Microsoft Entra ID / Azure AD single sign-on is available in **Settings → Single sign-on** as of v0.3. See [SSO setup](docs/SSO.md) for app registration, explicit user mappings, and secret management. Local password login remains available.
+
 - **My account** lets users change their password. Administrators can reset another human user's password or require a change under **Settings → People & permissions → Password options**. Both administrator actions revoke existing sessions and API credentials. Temporary passwords must be replaced at login.
 - **Notifications** shows assignments, replies, private notes (staff only), and status/approval activity. Creators, current assignees, and ticket watchers receive relevant events, excluding their own actions. Notifications are rechecked against current permissions; watching never grants access. Staff can add colleagues as watchers from ticket details. Inboxes refresh every 30 seconds.
 - **Attention needed** ranks active tickets with breached SLAs, approaching SLAs (80% elapsed), unanswered customer conversations, or no assignee. Pending-approval and closed tickets are excluded. Categories can overlap; filters and counts respect ticket access.
@@ -135,7 +137,7 @@ See [deployment instructions](docs/DEPLOYMENT.md) for Ubuntu, PostgreSQL, system
 ## Deliberate boundaries
 
 - Single support organization. Staff roles have workspace-wide access; per-project staff restrictions are not implemented.
-- Accounts are administrator-created. Self-registration, self-service password recovery, SSO, and MFA are not implemented.
+- Accounts are administrator-created. Self-registration and self-service password recovery are not implemented. Entra SSO supports tenant-managed MFA; local-password MFA is not implemented.
 - Reports cover ticket records and the four SLA measurements, not arbitrary SQL, custom database joins, or a general-purpose BI engine. SLA attention is visible in the queue; automated escalation and email delivery are future work.
 - Reports run synchronously; this release is intended for a small support team. Large installations will need query optimization and background exports.
 - v0.2 adds five tables without changing existing tables. Back up before deploying; startup creates the new tables. Future changes to existing columns require versioned migrations because `create_all` does not upgrade them.

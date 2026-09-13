@@ -488,3 +488,102 @@ test("account administration, watchers, saved views, bulk actions and attention"
   await expect(page.getByText("Your password has been changed.")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("Microsoft connection configuration and sign-in entry point", async ({
+  page,
+}) => {
+  const headers = {
+    Origin: "http://127.0.0.1:5173",
+    "X-Requested-With": "RapidSupportHub",
+  };
+  await page.request.post("/api/auth/login", {
+    headers,
+    data: { username: "SupportAdmin", password: "Changed-local-e2e-456!" },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Single sign-on", exact: true })
+    .click();
+  await expect(page.getByLabel("Web redirect URI")).toHaveValue(
+    "http://127.0.0.1:5173/api/auth/entra/callback",
+  );
+  await page.getByLabel("Connection name").fill("Test Microsoft tenant");
+  await page
+    .getByLabel("Directory (tenant) ID")
+    .fill("11111111-1111-4111-8111-111111111111");
+  await page
+    .getByLabel("Application (client) ID")
+    .fill("22222222-2222-4222-8222-222222222222");
+  await page
+    .getByLabel("Client secret value")
+    .fill("test-only-browser-client-secret");
+  await page.getByLabel("Enable Microsoft sign-in").check();
+  await page
+    .getByRole("button", { name: "Save connection", exact: true })
+    .click();
+  await expect(page.getByText("SSO settings saved.")).toBeVisible();
+  await page
+    .getByLabel("Tenant connection", { exact: true })
+    .selectOption({ label: "Test Microsoft tenant" });
+  await page
+    .getByLabel("Portal user", { exact: true })
+    .selectOption({ label: "Operations Tester (operations-tester)" });
+  await page
+    .getByLabel("Microsoft user Object ID")
+    .fill("33333333-3333-4333-8333-333333333333");
+  await page
+    .getByRole("button", { name: "Link Microsoft user", exact: true })
+    .click();
+  await expect(
+    page.getByRole("cell", { name: "Operations Tester", exact: true }),
+  ).toBeVisible();
+  const config = await (await page.request.get("/api/admin/sso")).json();
+  expect(JSON.stringify(config)).not.toContain(
+    "test-only-browser-client-secret",
+  );
+  await page.screenshot({
+    path: "test-results/sso-settings.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Welcome back." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Sign in with Microsoft · Test Microsoft tenant",
+    }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "test-results/sso-login-mobile.png",
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.route("https://login.microsoftonline.com/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<h1>Microsoft redirect intercepted for testing</h1>",
+    }),
+  );
+  await page
+    .getByRole("button", {
+      name: "Sign in with Microsoft · Test Microsoft tenant",
+    })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Microsoft redirect intercepted for testing",
+    }),
+  ).toBeVisible();
+  const url = new URL(page.url());
+  expect(url.pathname).toBe(
+    "/11111111-1111-4111-8111-111111111111/oauth2/v2.0/authorize",
+  );
+  expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+});

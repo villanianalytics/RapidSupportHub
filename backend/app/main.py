@@ -21,6 +21,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from . import schemas as s
 from . import sla, workspace
 from .db import Base, SessionLocal, engine, get_db, now
+from .entra import router as entra_router
 from .models import (
     Attachment,
     Audit,
@@ -74,7 +75,7 @@ async def lifespan(app):
 
 app = FastAPI(
     title="RapidSupportHub API",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
@@ -87,6 +88,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 app.include_router(operations_router)
+app.include_router(entra_router)
 
 
 @app.exception_handler(IntegrityError)
@@ -167,7 +169,7 @@ def validate_assignee(db, record_id):
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
-    return {"status": "ok", "version": "0.2.0"}
+    return {"status": "ok", "version": "0.3.0"}
 
 
 attempts = defaultdict(deque)
@@ -175,8 +177,7 @@ attempt_lock = Lock()
 dummy_hash = passwords.hash(secrets.token_urlsafe(24))
 
 
-@app.post("/api/auth/login")
-def login(data: s.Login, request: Request, response: Response, db: Session = Depends(get_db)):
+def check_login_rate(request):
     ip = request.client.host if request.client else "unknown"
     stamp = time.monotonic()
     with attempt_lock:
@@ -188,6 +189,11 @@ def login(data: s.Login, request: Request, response: Response, db: Session = Dep
         if len(attempts[ip]) >= 15:
             raise HTTPException(429, "Too many sign-in attempts; retry in five minutes")
         attempts[ip].append(stamp)
+
+
+@app.post("/api/auth/login")
+def login(data: s.Login, request: Request, response: Response, db: Session = Depends(get_db)):
+    check_login_rate(request)
     user = db.scalar(select(User).where(User.username == data.username))
     valid = passwords.verify(data.password, user.password_hash if user else dummy_hash)
     if not user or not valid or not user.active or user.automation:
@@ -209,8 +215,12 @@ def login(data: s.Login, request: Request, response: Response, db: Session = Dep
 
 
 @app.get("/api/auth/me")
-def me(user: User = Depends(identity)):
-    return user_dict(user)
+def me(request: Request, user: User = Depends(identity)):
+    result = user_dict(user)
+    result["auth_method"] = "entra" if request.state.credential.kind == "sso" else "local"
+    if request.state.credential.kind == "sso":
+        result["must_change_password"] = False
+    return result
 
 
 @app.post("/api/auth/logout")
@@ -229,10 +239,13 @@ def logout(
 @app.post("/api/auth/password")
 def change_password(
     data: s.PasswordChange,
+    request: Request,
     response: Response,
     user: User = Depends(identity),
     db: Session = Depends(get_db),
 ):
+    if request.state.credential.kind == "sso":
+        raise HTTPException(422, "Manage your Microsoft password through your organization")
     if not passwords.verify(data.current_password, user.password_hash):
         raise HTTPException(400, "Current password is incorrect")
     if passwords.verify(data.new_password, user.password_hash):

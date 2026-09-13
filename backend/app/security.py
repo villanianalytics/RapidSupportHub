@@ -72,11 +72,16 @@ def identity(
         }
         if origin not in allowed or request.headers.get("x-requested-with") != "RapidSupportHub":
             raise HTTPException(403, "Invalid request origin")
-    if user.must_change_password and request.url.path not in {
-        "/api/auth/me",
-        "/api/auth/password",
-        "/api/auth/logout",
-    }:
+    if (
+        user.must_change_password
+        and credential.kind != "sso"
+        and request.url.path
+        not in {
+            "/api/auth/me",
+            "/api/auth/password",
+            "/api/auth/logout",
+        }
+    ):
         raise HTTPException(403, "Change your temporary password first")
     if credential.kind == "api":
         needed = "read" if request.method in {"GET", "HEAD"} else "write"

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, KeyRound, Plus, ShieldCheck } from "lucide-react";
 import { api, Catalog, date, label, User } from "./api";
 import { Field, Modal } from "./main";
+import { SSOSettings } from "./sso";
 
 const roleOptions = [
   "admin",
@@ -108,6 +109,7 @@ export function Admin({
     ["users", "People & permissions"],
     ["sla", "SLA policies"],
     ["api", "API access"],
+    ["sso", "Single sign-on"],
   ];
   return (
     <>
@@ -149,6 +151,7 @@ export function Admin({
           {notice}
         </div>
       )}
+      {tab === "sso" && <SSOSettings users={users} />}
       {tab === "workspace" && (
         <div className="settings-grid">
           {(["products", "companies"] as const).map((entity) => (

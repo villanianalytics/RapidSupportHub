@@ -47,6 +47,10 @@ This upgrade creates `ticket_watchers`, `notifications`, `ticket_tags`, `ticket_
 
 New activity generates notifications after deployment. Existing creators and assignees receive future updates without needing a watcher backfill. No historical inbox events are synthesized.
 
+### v0.2 to v0.3
+
+Install the updated Python requirements (adds PyJWT with cryptography), configure a private `SSO_ENCRYPTION_KEY`, and back up the database and environment file before updating. Startup adds `entra_connections`, `entra_identities`, and `entra_flows`; existing tables and accounts are unchanged. SSO remains unavailable until an administrator registers a connection and enables it. See [SSO setup](SSO.md). Preserve the encryption key alongside database backups, and keep the previous application release for rollback.
+
 The systemd timer runs at **07:00 UTC daily**, with 14-day retention. It briefly stops the application, takes a PostgreSQL custom-format dump and an upload archive, then restarts it. This keeps files and database references consistent. Expect a short maintenance interruption during backups.
 
 Run a backup manually:

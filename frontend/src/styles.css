@@ -1357,6 +1357,7 @@ td small span {
   color: #a6be89;
 }
 .auth-form {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1364,6 +1365,7 @@ td small span {
   background: #fbfcf9;
 }
 .auth-form form {
+  min-width: 0;
   width: 350px;
   max-width: 100%;
 }
@@ -1677,6 +1679,24 @@ td small span {
   }
 }
 /* Account, subscriptions, and personal work queues. */
+.sso-signin {
+  margin-top: 20px;
+}
+.sso-signin button {
+  margin-top: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sso-connection {
+  padding: 14px 0;
+  border-bottom: 1px solid #e5ebe7;
+  margin-bottom: 16px;
+}
+.sso-connection small {
+  display: block;
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
 .account-panel {
   max-width: 620px;
 }
