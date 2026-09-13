@@ -1,0 +1,45 @@
+name: Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.19.0'
+      - run: python -m pip install -r backend/requirements-dev.txt
+      - run: ruff check backend scripts
+      - run: python -m pytest -q
+        working-directory: backend
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: pnpm build
+        working-directory: frontend
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Browser workflow
+        run: |
+          python scripts/run-e2e-api.py > /tmp/rsh-api.log 2>&1 &
+          pnpm --dir frontend dev --host 127.0.0.1 > /tmp/rsh-ui.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/api/health && curl -fsS http://127.0.0.1:5173 > /dev/null; then break; fi
+            sleep 1
+          done
+          cd frontend
+          pnpm exec playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-diagnostics
+          path: frontend/test-results

@@ -1,0 +1,192 @@
+from datetime import date, time
+from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import BaseModel, Field, model_validator
+
+Role = Literal["admin", "agent", "developer", "customer_own", "customer_company"]
+Severity = Literal["sev1", "sev2", "sev3", "sev4"]
+Incident = Literal["outage", "bug", "question", "request"]
+Status = Literal["new", "started", "in_progress", "waiting_customer", "pending_approval", "closed"]
+
+
+class Login(BaseModel):
+    username: str = Field(max_length=100)
+    password: str = Field(max_length=256)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9_.@-]+$")
+    name: str = Field(min_length=1, max_length=160)
+    email: str = Field(default="", max_length=254)
+    password: str = Field(min_length=12, max_length=256)
+    roles: list[Role] = Field(min_length=1)
+    company_id: int | None = None
+    manage_reports: bool = False
+    automation: bool = False
+
+
+class UserUpdate(BaseModel):
+    roles: list[Role] = Field(min_length=1)
+    company_id: int | None = None
+    manage_reports: bool = False
+    active: bool = True
+
+
+class Named(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
+
+
+class Targets(BaseModel):
+    severity: Severity
+    incident_type: Literal["*", "outage", "bug", "question", "request"] = "*"
+    first_response: int = Field(gt=0, le=525600)
+    resolution: int = Field(gt=0, le=525600)
+    reply: int | None = Field(default=None, gt=0, le=525600)
+    update: int | None = Field(default=None, gt=0, le=525600)
+
+
+class SLAConfig(BaseModel):
+    timezone: str = "America/New_York"
+    coverage: Literal["24x7", "business"] = "24x7"
+    weekdays: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4], min_length=1, max_length=7)
+    start: str = "09:00"
+    end: str = "17:00"
+    holidays: list[date] = Field(default_factory=list, max_length=366)
+    pause_waiting: bool = True
+    targets: list[Targets] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_calendar(self):
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("Unknown timezone")
+        try:
+            start, end = time.fromisoformat(self.start), time.fromisoformat(self.end)
+        except ValueError:
+            raise ValueError("Use HH:MM times")
+        if start.tzinfo or end.tzinfo or start >= end:
+            raise ValueError("Business hours must start before they end within one day")
+        if any(d < 0 or d > 6 for d in self.weekdays):
+            raise ValueError("Weekdays must be between 0 (Monday) and 6 (Sunday)")
+        keys = [(t.severity, t.incident_type) for t in self.targets]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Duplicate severity / incident target")
+        return self
+
+
+class PolicyInput(BaseModel):
+    company_id: int
+    name: str = Field(min_length=1, max_length=160)
+    config: SLAConfig
+
+
+class TicketCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=240)
+    description: str = Field(min_length=1, max_length=50000)
+    kind: Literal["support", "bug"] = "support"
+    incident_type: Incident = "question"
+    severity: Severity = "sev3"
+    company_id: int | None = None
+    product_id: int
+    assignee_id: int | None = None
+    reproduction: str = Field(default="", max_length=20000)
+    affected_version: str = Field(default="", max_length=100)
+
+
+class TicketUpdate(BaseModel):
+    version: int
+    status: Status | None = None
+    severity: Severity | None = None
+    incident_type: Incident | None = None
+    assignee_id: int | None = None
+    linked_bug_id: int | None = None
+    resolution: str | None = Field(default=None, max_length=20000)
+    reason: str = Field(default="", max_length=2000)
+
+
+class MessageInput(BaseModel):
+    body: str = Field(min_length=1, max_length=50000)
+    internal: bool = False
+
+
+class KeyInput(BaseModel):
+    user_id: int
+    name: str = Field(min_length=1, max_length=100)
+    scopes: list[Literal["read", "write", "reports"]] = Field(min_length=1)
+    expires_days: int = Field(default=90, ge=1, le=365)
+
+
+class ReportConfig(BaseModel):
+    view: Literal["summary", "records"] = "summary"
+    columns: list[
+        Literal[
+            "id",
+            "title",
+            "description",
+            "company",
+            "product",
+            "status",
+            "severity",
+            "incident_type",
+            "assignee",
+            "creator",
+            "kind",
+            "created_at",
+            "updated_at",
+            "resolution",
+            "first_response_minutes",
+            "resolution_minutes",
+        ]
+    ] = Field(
+        default_factory=lambda: [
+            "id",
+            "title",
+            "company",
+            "product",
+            "status",
+            "severity",
+            "assignee",
+        ],
+        min_length=1,
+        max_length=16,
+    )
+    group_by: Literal[
+        "status",
+        "severity",
+        "incident_type",
+        "assignee",
+        "first_response_agent",
+        "company",
+        "product",
+        "kind",
+    ] = "incident_type"
+    metric: Literal["count", "first_response", "resolution", "reply", "update"] = "count"
+    status: Status | None = None
+    severity: Severity | None = None
+    company_id: int | None = None
+    product_id: int | None = None
+    assignee_id: int | None = None
+    kind: Literal["support", "bug"] | None = None
+    incident_type: Incident | None = None
+    from_date: date | None = None
+    to_date: date | None = None
+
+    @model_validator(mode="after")
+    def dates(self):
+        if self.from_date and self.to_date and self.from_date > self.to_date:
+            raise ValueError("Start date must precede end date")
+        return self
+
+
+class ReportInput(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    shared: bool = False
+    config: ReportConfig

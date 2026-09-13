@@ -1,0 +1,5 @@
+[Unit]
+Description=Back up RapidSupportHub database and attachments
+[Service]
+Type=oneshot
+ExecStart=/opt/rapidsupporthub/deploy/backup.sh

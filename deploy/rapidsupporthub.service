@@ -1,0 +1,23 @@
+[Unit]
+Description=RapidSupportHub REST API
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=rapidsupporthub
+Group=rapidsupporthub
+WorkingDirectory=/opt/rapidsupporthub/backend
+EnvironmentFile=/etc/rapidsupporthub.env
+ExecStart=/opt/rapidsupporthub/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rapidsupporthub
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
