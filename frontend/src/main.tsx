@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
+  BookOpen,
   Bug,
   Check,
   ChevronRight,
@@ -39,6 +40,7 @@ import {
 import { Admin } from "./settings";
 import { Reports } from "./reports";
 import { MicrosoftSignIn } from "./sso";
+import { HelpCenter, HelpDialog } from "./help";
 import {
   Account,
   Notifications,
@@ -246,6 +248,7 @@ function Auth({
 }
 
 function App() {
+  const [helpTopic, setHelpTopic] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null),
@@ -372,6 +375,7 @@ function App() {
   useEffect(() => {
     const ended = () => {
       setUser(null);
+      setHelpTopic(null);
       setMenuOpen(false);
       setSelected(null);
       setUnread(0);
@@ -459,6 +463,7 @@ function App() {
     ["account", "My account", ShieldCheck],
   );
   nav.push(["reports", "Reports", BarChart3]);
+  nav.push(["help", "Help center", BookOpen]);
   if (isAdmin) nav.push(["settings", "Settings", Settings]);
   function navigate(p: string) {
     setMenuOpen(false);
@@ -578,14 +583,34 @@ function App() {
                 day: "numeric",
               })}
             </span>
-            <a
-              href="/api/docs"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="REST API documentation"
+            <button
+              className="icon-button"
+              aria-label="Help for this page"
+              title="Help for this page"
+              onClick={() =>
+                setHelpTopic(
+                  selected
+                    ? selected.kind === "bug"
+                      ? "bugs"
+                      : staff
+                        ? "agent-workflow"
+                        : "conversation"
+                    : {
+                        overview: "start",
+                        tickets: staff ? "agent-workflow" : "support-create",
+                        bugs: "bugs",
+                        attention: "sla",
+                        notifications: "notifications",
+                        account: "account",
+                        reports: "reports",
+                        settings: "workspace",
+                        help: "start",
+                      }[page] || "start",
+                )
+              }
             >
               <CircleHelp size={19} />
-            </a>
+            </button>
           </div>
         </header>
         <div className="content">
@@ -610,6 +635,8 @@ function App() {
                 refresh();
               }}
             />
+          ) : page === "help" ? (
+            <HelpCenter user={user} />
           ) : page === "account" ? (
             <Account user={user} onChanged={setUser} />
           ) : page === "notifications" ? (
@@ -617,7 +644,12 @@ function App() {
           ) : page === "attention" ? (
             <Attention onOpen={open} />
           ) : page === "settings" ? (
-            <Admin catalog={catalog} refresh={refresh} user={user} />
+            <Admin
+              catalog={catalog}
+              refresh={refresh}
+              user={user}
+              onHelp={setHelpTopic}
+            />
           ) : page === "reports" ? (
             <Reports user={user} catalog={catalog} />
           ) : (
@@ -1072,6 +1104,13 @@ function App() {
           <span>Open source support, thoughtfully connected.</span>
         </footer>
       </main>
+      {helpTopic !== null && (
+        <HelpDialog
+          user={user}
+          topic={helpTopic}
+          onClose={() => setHelpTopic(null)}
+        />
+      )}
       {create && (
         <CreateTicket
           catalog={catalog}

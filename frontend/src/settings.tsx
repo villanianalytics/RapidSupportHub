@@ -58,10 +58,12 @@ export function Admin({
   catalog,
   refresh,
   user,
+  onHelp,
 }: {
   catalog: Catalog;
   refresh: () => Promise<void>;
   user: User;
+  onHelp: (topic: string) => void;
 }) {
   const [tab, setTab] = useState("workspace"),
     [users, setUsers] = useState<User[]>([]),
@@ -140,6 +142,22 @@ export function Admin({
           </button>
         ))}
       </div>
+      <button
+        className="text-button settings-help"
+        onClick={() =>
+          onHelp(
+            {
+              workspace: "workspace",
+              users: "users",
+              sla: "sla-config",
+              api: "api",
+              sso: "sso",
+            }[tab] || "workspace",
+          )
+        }
+      >
+        Help with {tabs.find((t) => t[0] === tab)?.[1]}
+      </button>
       {error && (
         <div className="error" role="alert">
           {error}

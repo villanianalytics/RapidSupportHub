@@ -145,3 +145,5 @@ See [deployment instructions](docs/DEPLOYMENT.md) for Ubuntu, PostgreSQL, system
 - v0.2 adds five tables without changing existing tables. Back up before deploying; startup creates the new tables. Future changes to existing columns require versioned migrations because `create_all` does not upgrade them.
 - Attachments are authorized downloads with a 10 MB limit, not inline previews. Malware scanning and per-client storage quotas are not included.
 - Backups are stored on the same server by default. Configure off-server replication to protect against server loss.
+
+The built-in **Help center** provides searchable, role-relevant guides for customer tickets, internal bugs, Kanban, SLAs, reports, accounts, SSO, and API automation. The top-bar question mark opens contextual help without leaving the current work; Settings tabs also link to their setup guides. Guide content lives in `frontend/src/help-content.ts` and ships with the application.

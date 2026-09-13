@@ -764,3 +764,99 @@ test("customer portal works with touch input", async ({ browser }) => {
     await context.close();
   }
 });
+
+test("searchable help, contextual guides and mobile customer topics", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Username", { exact: true }).fill("SupportAdmin");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("Changed-local-e2e-456!");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Help center", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("20 guides");
+  await page.getByLabel("Search help").fill("reproduction");
+  await page
+    .getByRole("button", { name: /Log and resolve internal bugs/ })
+    .click();
+  await expect(
+    page
+      .locator("article")
+      .getByRole("heading", {
+        name: "Log and resolve internal bugs",
+        exact: true,
+      }),
+  ).toBeVisible();
+  await page.getByLabel("Search help").fill("zzzzmissingtopic");
+  await expect(
+    page.getByRole("heading", { name: "No matching help topics" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear help filters" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Single sign-on", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Help with Single sign-on", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", {
+        name: "Configure Microsoft Entra single sign-on",
+      }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("button", { name: "Help center", exact: true }).click();
+  await page.getByLabel("Search help").fill("SLA");
+  await page.screenshot({
+    path: "test-results/help-mobile.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: /Understand SLAs and the attention queue/ })
+    .click();
+  await page.screenshot({
+    path: "test-results/help-article-mobile.png",
+    fullPage: true,
+  });
+});
+
+test("customer help excludes staff and administration guides", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Username", { exact: true }).fill("client-reviewer");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("Client-changed-pass-456!");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Help center", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /Create a support ticket/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: /Log and resolve internal bugs|Create users and manage access|Build custom reports/,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "REST API reference" }),
+  ).toHaveCount(0);
+  await page.getByLabel("Search help").fill("single sign-on");
+  await expect(
+    page.getByRole("button", { name: /Configure Microsoft Entra/ }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Help for this page" }).click();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", { name: "Get started with RapidSupportHub" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close help" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
