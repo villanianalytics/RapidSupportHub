@@ -1,5 +1,13 @@
 import { test, expect } from "@playwright/test";
 
+test.afterEach(async ({ page }) => {
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+});
+
 test("administrator setup, customer conversation, Kanban and reports", async ({
   page,
 }) => {
@@ -110,9 +118,15 @@ test("administrator setup, customer conversation, Kanban and reports", async ({
       .filter({ has: page.locator("header .badge.in_progress") })
       .getByText("CSV export fails for large datasets"),
   ).toBeVisible();
-  await card.dragTo(page.locator('.kanban-column').filter({has:page.locator('header .badge.pending_approval')}));
-  await expect(page.getByLabel('Move to status',{exact:true})).toHaveValue('pending_approval');
-  await page.getByRole('button',{name:'Back to workspace'}).click();
+  await card.dragTo(
+    page
+      .locator(".kanban-column")
+      .filter({ has: page.locator("header .badge.pending_approval") }),
+  );
+  await expect(page.getByLabel("Move to status", { exact: true })).toHaveValue(
+    "pending_approval",
+  );
+  await page.getByRole("button", { name: "Back to workspace" }).click();
   await page.getByRole("button", { name: "Overview", exact: true }).click();
   await page.getByRole("button", { name: "List view" }).click();
   await page.screenshot({
@@ -261,4 +275,162 @@ test("customer approval, private-data isolation, and shared record reports", asy
       exact: true,
     }),
   ).toBeVisible();
+});
+
+test("account administration, watchers, saved views, bulk actions and attention", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const headers = {
+    Origin: "http://127.0.0.1:5173",
+    "X-Requested-With": "RapidSupportHub",
+  };
+  expect(
+    (
+      await page.request.post("/api/auth/login", {
+        headers,
+        data: { username: "SupportAdmin", password: "Changed-local-e2e-456!" },
+      })
+    ).ok(),
+  ).toBe(true);
+  const catalog = await (await page.request.get("/api/catalog")).json();
+  const colleague = await (
+    await page.request.post("/api/admin/users", {
+      headers,
+      data: {
+        username: "operations-tester",
+        name: "Operations Tester",
+        password: "Operations-temp-123!",
+        roles: ["developer"],
+      },
+    })
+  ).json();
+  const created = [];
+  for (const title of ["Queue test one", "Queue test two"]) {
+    const res = await page.request.post("/api/tickets", {
+      headers,
+      data: {
+        title,
+        description: "Browser workflow verification",
+        product_id: catalog.products[0].id,
+        company_id: catalog.companies[0].id,
+      },
+    });
+    expect(res.ok()).toBe(true);
+    created.push(await res.json());
+  }
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Queue test one", exact: true })
+    .click();
+  await page.getByLabel("Tags (comma-separated)").fill("regression, export");
+  await page.getByLabel("Duplicate of ticket ID").fill(String(created[1].id));
+  await page
+    .getByRole("button", { name: "Save organization", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`/api/tickets/${created[0].id}`)).json())
+          .tags,
+    )
+    .toEqual(["export", "regression"]);
+  await page.getByLabel("Add staff watcher").selectOption(String(colleague.id));
+  await expect(
+    page.getByRole("button", { name: "Remove watcher Operations Tester" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Support tickets", exact: true })
+    .click();
+  await page.getByLabel("Search tickets").fill("Queue test");
+  await expect(
+    page.getByRole("button", { name: "Queue test two", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("View name").fill("Queue checks");
+  await page.getByRole("button", { name: "Save view", exact: true }).click();
+  await expect(page.getByLabel("Saved view")).not.toHaveValue("");
+  await page.getByLabel("Select all visible tickets").check();
+  await page.getByLabel("Bulk status").selectOption("in_progress");
+  await page.getByLabel("Bulk assignment").selectOption(String(colleague.id));
+  await page.getByRole("button", { name: "Apply to selected" }).click();
+  await expect(
+    page.getByRole("button", { name: "Apply to selected" }),
+  ).toHaveCount(0);
+  for (const t of created)
+    expect(
+      (await (await page.request.get(`/api/tickets/${t.id}`)).json()).status,
+    ).toBe("in_progress");
+  await page
+    .getByRole("button", { name: "Attention needed", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Attention needed", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Queue test one", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/attention-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "test-results/attention-mobile.png",
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: "People & permissions", exact: true })
+    .click();
+  await page
+    .getByRole("row")
+    .filter({ hasText: "Operations Tester" })
+    .getByRole("button", { name: "Password options" })
+    .click();
+  await page.getByLabel("New temporary password").fill("Operations-reset-456!");
+  await page
+    .getByRole("button", { name: "Reset password", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Username", { exact: true }).fill("operations-tester");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("Operations-reset-456!");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page
+    .getByLabel("Current password", { exact: true })
+    .fill("Operations-reset-456!");
+  await page
+    .getByLabel("New password · at least 12 characters")
+    .fill("Operations-personal-789!");
+  await page
+    .getByRole("button", { name: "Save password", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Notifications", exact: true })
+    .click();
+  await expect(page.locator(".notification-row").first()).toBeVisible();
+  await page.getByRole("button", { name: "Mark all as read" }).click();
+  await expect(page.getByRole("heading", { name: "0 unread" })).toBeVisible();
+  await page.getByRole("button", { name: "My account", exact: true }).click();
+  await page
+    .getByLabel("Current password", { exact: true })
+    .fill("Operations-personal-789!");
+  await page
+    .getByLabel("New password", { exact: true })
+    .fill("Operations-final-012!");
+  await page.getByLabel("Confirm new password").fill("Operations-final-012!");
+  await page
+    .getByRole("button", { name: "Change password", exact: true })
+    .click();
+  await expect(page.getByText("Your password has been changed.")).toBeVisible();
+  expect(errors).toEqual([]);
 });

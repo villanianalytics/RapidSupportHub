@@ -121,6 +121,216 @@ def policy(client, company):
     assert result.status_code == 200, result.text
 
 
+def test_account_reset_and_revocation(setup):
+    client, company, other, product, users = setup
+    path = f"/api/admin/users/{users['alice_id']}"
+    assert (
+        client.post(
+            path + "/reset-password",
+            headers=users["dev"],
+            json={"temporary_password": "Replacement-temp-456!"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/api/admin/users/1/reset-password",
+            json={"temporary_password": "Replacement-temp-456!"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(f"/api/admin/users/{users['bot_id']}/require-password-change").status_code
+        == 422
+    )
+    assert (
+        client.post(
+            path + "/reset-password", json={"temporary_password": "Replacement-temp-456!"}
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/auth/me", headers=users["alice"]).status_code == 401
+    with TestClient(app, headers=HEADERS) as customer:
+        assert (
+            customer.post(
+                "/api/auth/login", json={"username": "alice", "password": "Temporary-test-123!"}
+            ).status_code
+            == 401
+        )
+        result = customer.post(
+            "/api/auth/login", json={"username": "alice", "password": "Replacement-temp-456!"}
+        )
+        assert result.json()["must_change_password"]
+        assert customer.get("/api/tickets").status_code == 403
+        assert (
+            customer.post(
+                "/api/auth/password",
+                json={
+                    "current_password": "Replacement-temp-456!",
+                    "new_password": "Personal-replacement-789!",
+                },
+            ).status_code
+            == 200
+        )
+        assert customer.get("/api/tickets").status_code == 200
+        assert client.post(path + "/require-password-change").status_code == 200
+        assert customer.get("/api/auth/me").status_code == 401
+        assert customer.post(
+            "/api/auth/login", json={"username": "alice", "password": "Personal-replacement-789!"}
+        ).json()["must_change_password"]
+
+
+def test_watchers_notification_visibility_and_read_state(setup):
+    client, company, other, product, users = setup
+    t = ticket(client, company, product, headers=users["alice"])
+    path = f"/api/tickets/{t['id']}"
+    assert client.put(path + f"/watchers/{users['dev_id']}").status_code == 200
+    assert client.put(path + f"/watchers/{users['eve_id']}").status_code == 422
+    assert (
+        client.put(path + f"/watchers/{users['bob_id']}", headers=users["alice"]).status_code == 403
+    )
+    assert client.get("/api/notifications", headers=users["dev"]).json()["unread_count"] == 1
+    assert (
+        client.post(
+            path + "/messages", json={"body": "Private investigation", "internal": True}
+        ).status_code
+        == 201
+    )
+    assert client.get("/api/notifications", headers=users["alice"]).json()["items"] == []
+    assert client.post(path + "/messages", json={"body": "We are investigating"}).status_code == 201
+    inbox = client.get("/api/notifications", headers=users["alice"]).json()
+    assert inbox["unread_count"] == 1
+    n = inbox["items"][0]
+    assert n["kind"] == "staff_reply"
+    assert client.patch(f"/api/notifications/{n['id']}", headers=users["eve"]).status_code == 404
+    assert client.patch(f"/api/notifications/{n['id']}", headers=users["alice"]).status_code == 200
+    assert (
+        client.get("/api/notifications?unread=true", headers=users["alice"]).json()["items"] == []
+    )
+    with SessionLocal() as db:
+        dev = db.get(User, users["dev_id"])
+        dev.roles = ["customer_own"]
+        db.commit()
+    assert client.get("/api/notifications", headers=users["dev"]).json()["items"] == []
+    assert client.get(path, headers=users["dev"]).status_code == 404
+
+
+def test_attention_queue_deadlines_and_unanswered(setup):
+    client, company, other, product, users = setup
+    policy(client, company)
+    t = ticket(client, company, product, headers=users["alice"])
+    with SessionLocal() as db:
+        first = db.scalar(
+            select(Cycle).where(Cycle.ticket_id == t["id"], Cycle.metric == "first_response")
+        )
+        first.started_at = now() - timedelta(minutes=26)
+        db.commit()
+    queue = client.get("/api/attention").json()
+    assert {"at_risk", "unanswered", "unassigned"} <= set(queue["items"][0]["attention"])
+    with SessionLocal() as db:
+        first = db.scalar(
+            select(Cycle).where(Cycle.ticket_id == t["id"], Cycle.metric == "first_response")
+        )
+        first.started_at = now() - timedelta(minutes=40)
+        db.commit()
+    assert client.get("/api/attention?reason=breached").json()["total"] == 1
+    assert client.get("/api/attention", headers=users["alice"]).status_code == 403
+    path = f"/api/tickets/{t['id']}"
+    client.post(path + "/messages", json={"body": "Human response"})
+    assert client.get("/api/attention?reason=unanswered").json()["total"] == 0
+    client.post(path + "/messages", json={"body": "More help please"}, headers=users["alice"])
+    assert client.get("/api/attention?reason=unanswered").json()["total"] == 1
+    current = client.get(path).json()
+    assert (
+        client.patch(
+            path,
+            json={
+                "version": current["version"],
+                "status": "pending_approval",
+                "resolution": "Fixed the export",
+            },
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/attention").json()["total"] == 0
+
+
+def test_organization_views_and_atomic_bulk(setup):
+    client, company, other, product, users = setup
+    a = ticket(client, company, product, headers=users["alice"])
+    b = ticket(client, company, product)
+    bug = ticket(client, None, product, kind="bug")
+    path = f"/api/tickets/{a['id']}/organization"
+    changed = client.patch(
+        path,
+        json={
+            "version": a["version"],
+            "tags": [" Export ", "export", "urgent"],
+            "duplicate_of_id": b["id"],
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    a = changed.json()
+    assert a["tags"] == ["export", "urgent"]
+    assert [t["id"] for t in client.get("/api/tickets?tag=export").json()] == [a["id"]]
+    assert "tags" not in client.get(f"/api/tickets/{a['id']}", headers=users["alice"]).json()
+    assert client.get("/api/tickets?tag=export", headers=users["alice"]).status_code == 403
+    assert (
+        client.patch(
+            f"/api/tickets/{b['id']}/organization",
+            json={"version": b["version"], "duplicate_of_id": a["id"]},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(path, json={"version": a["version"], "duplicate_of_id": bug["id"]}).status_code
+        == 422
+    )
+    assert client.patch(path, json={"version": a["version"] - 1, "tags": []}).status_code == 409
+    refs = [{"id": t["id"], "version": t["version"]} for t in [a, bug]]
+    # The support mutation succeeds first; the later bug rejects customer approval.
+    result = client.post(
+        "/api/tickets/bulk",
+        json={"tickets": refs, "status": "pending_approval", "resolution": "Fixed"},
+    )
+    assert result.status_code == 422
+    current = client.get(f"/api/tickets/{a['id']}").json()
+    assert current["status"] == "new" and current["version"] == a["version"]
+    assert client.get("/api/notifications", headers=users["alice"]).json()["items"] == []
+    result = client.post(
+        "/api/tickets/bulk",
+        json={"tickets": refs, "status": "in_progress", "assignee_id": users["dev_id"]},
+    )
+    assert result.status_code == 200, result.text
+    assert all(
+        t["assignee_id"] == users["dev_id"] and t["status"] == "in_progress" for t in result.json()
+    )
+    assert (
+        client.post("/api/tickets/bulk", json={"tickets": refs, "status": "started"}).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            "/api/tickets/bulk", headers=users["alice"], json={"tickets": refs, "status": "started"}
+        ).status_code
+        == 403
+    )
+    view = client.post(
+        "/api/views", json={"name": "Export issues", "config": {"tag": "export", "layout": "board"}}
+    ).json()
+    assert client.get("/api/views", headers=users["dev"]).json() == []
+    assert client.delete(f"/api/views/{view['id']}", headers=users["dev"]).status_code == 404
+    assert (
+        client.post(
+            "/api/views",
+            headers=users["alice"],
+            json={"name": "Private", "config": {"kind": "bug"}},
+        ).status_code
+        == 403
+    )
+    assert client.delete(f"/api/views/{view['id']}").status_code == 200
+
+
 def test_company_and_private_visibility(setup):
     client, company, other, product, users = setup
     alice = ticket(client, company, product, headers=users["alice"])

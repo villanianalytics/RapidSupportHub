@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from . import schemas as s
-from . import sla
+from . import sla, workspace
 from .db import Base, SessionLocal, engine, get_db, now
 from .models import (
     Attachment,
@@ -31,8 +31,11 @@ from .models import (
     Product,
     Report,
     Ticket,
+    TicketTag,
     User,
+    Watcher,
 )
+from .operations import router as operations_router
 from .security import (
     admin,
     identity,
@@ -71,7 +74,7 @@ async def lifespan(app):
 
 app = FastAPI(
     title="RapidSupportHub API",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
@@ -83,6 +86,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
+app.include_router(operations_router)
 
 
 @app.exception_handler(IntegrityError)
@@ -163,7 +167,7 @@ def validate_assignee(db, record_id):
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": "0.2.0"}
 
 
 attempts = defaultdict(deque)
@@ -443,6 +447,7 @@ def ticket_dict(db, ticket, user, detail=False):
     if staff(user):
         fields += ["reproduction", "affected_version", "linked_bug_id"]
     result = {k: getattr(ticket, k) for k in fields}
+    result.update(workspace.organization(db, ticket, user))
     result["creator"] = db.get(User, ticket.creator_id).name
     result["assignee"] = (
         db.get(User, ticket.assignee_id).name if ticket.assignee_id else "Unassigned"
@@ -451,6 +456,7 @@ def ticket_dict(db, ticket, user, detail=False):
     result["company"] = db.get(Company, ticket.company_id).name if ticket.company_id else "Internal"
     if staff(user):
         result["sla"] = sla.summary(db, ticket)
+        result["attention"] = workspace.attention_reasons(db, ticket, result["sla"])
     if detail:
         result["messages"] = [
             {
@@ -492,6 +498,11 @@ def list_tickets(
     kind: str | None = None,
     status: str | None = None,
     mine: bool = False,
+    watching: bool = False,
+    severity: str = "",
+    product_id: int | None = None,
+    company_id: int | None = None,
+    tag: str = "",
     limit: int = 100,
     offset: int = 0,
     user: User = Depends(identity),
@@ -506,6 +517,22 @@ def list_tickets(
         query = query.where(Ticket.status == status)
     if mine:
         query = query.where((Ticket.assignee_id if staff(user) else Ticket.creator_id) == user.id)
+    if watching:
+        query = query.where(
+            Ticket.id.in_(select(Watcher.ticket_id).where(Watcher.user_id == user.id))
+        )
+    if severity:
+        query = query.where(Ticket.severity == severity)
+    if product_id:
+        query = query.where(Ticket.product_id == product_id)
+    if company_id:
+        query = query.where(Ticket.company_id == company_id)
+    if tag:
+        if not staff(user):
+            raise HTTPException(403, "Tags are internal to staff")
+        query = query.where(
+            Ticket.id.in_(select(TicketTag.ticket_id).where(TicketTag.name == tag.strip().lower()))
+        )
     records = db.scalars(
         query.order_by(Ticket.updated_at.desc())
         .offset(max(0, offset))
@@ -550,6 +577,9 @@ def create_ticket(
         sla.start_cycle(db, ticket, "first_response", ticket.created_at, always=True)
         sla.start_cycle(db, ticket, "update", ticket.created_at)
     audit(db, user, "ticket_created", ticket)
+    if not user.automation:
+        db.add(Watcher(ticket_id=ticket.id, user_id=user.id))
+    workspace.notify(db, ticket, user, "assigned" if ticket.assignee_id else "ticket_created")
     db.commit()
     return ticket_dict(db, ticket, user, True)
 
@@ -565,6 +595,9 @@ def transition(db, ticket, user, status, at):
         return
     ticket.status = status
     audit(db, user, "status_changed", ticket, {"from": old, "to": status}, at)
+    workspace.notify(
+        db, ticket, user, "approval_requested" if status == "pending_approval" else "status_changed"
+    )
     for cycle in sla.cycles(db, ticket):
         if status in {"pending_approval", "closed"} and not cycle.completed_at:
             if cycle.metric in {"resolution", "update", "reply"}:
@@ -598,12 +631,11 @@ def public_staff_reply(db, ticket, user, at, schedule_next=True):
         sla.start_cycle(db, ticket, "update", at)
 
 
-@app.patch("/api/tickets/{ticket_id}")
-def update_ticket(
+def apply_ticket_update(
     ticket_id: int,
     data: s.TicketUpdate,
-    user: User = Depends(identity),
-    db: Session = Depends(get_db),
+    user: User,
+    db: Session,
 ):
     ticket = ticket_access(db, user, ticket_id)
     if ticket.version != data.version:
@@ -657,6 +689,8 @@ def update_ticket(
                 {"field": field, "from": previous, "to": value},
                 at,
             )
+            if field == "assignee_id":
+                workspace.notify(db, ticket, user, "assigned", internal=True)
     # In-flight SLA targets remain fixed; classification changes cannot erase a breach.
     if resolving and ticket.kind == "support":
         db.add(
@@ -675,6 +709,18 @@ def update_ticket(
         if not staff(user) and ticket.status == "in_progress":
             sla.start_cycle(db, ticket, "reply", at)
     ticket.updated_at = at
+    db.flush()
+    return ticket
+
+
+@app.patch("/api/tickets/{ticket_id}")
+def update_ticket(
+    ticket_id: int,
+    data: s.TicketUpdate,
+    user: User = Depends(identity),
+    db: Session = Depends(get_db),
+):
+    ticket = apply_ticket_update(ticket_id, data, user, db)
     db.commit()
     return ticket_dict(db, ticket, user, True)
 
@@ -712,6 +758,13 @@ def add_message(
         "private_note_added" if data.internal else "reply_added",
         ticket,
         at=at,
+    )
+    workspace.notify(
+        db,
+        ticket,
+        user,
+        "private_note" if data.internal else "staff_reply" if staff(user) else "customer_reply",
+        internal=data.internal,
     )
     db.commit()
     return ticket_dict(db, ticket, user, True)

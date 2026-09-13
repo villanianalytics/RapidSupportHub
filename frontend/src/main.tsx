@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
+  Bell,
   Bug,
   Check,
   ChevronRight,
@@ -35,6 +36,14 @@ import {
 } from "./api";
 import { Admin } from "./settings";
 import { Reports } from "./reports";
+import {
+  Account,
+  Notifications,
+  Attention,
+  TicketExtras,
+  ViewTools,
+  BulkActions,
+} from "./operations";
 import "./styles.css";
 
 export function Field({
@@ -250,6 +259,9 @@ function App() {
     [search, setSearch] = useState(""),
     [status, setStatus] = useState(""),
     [mine, setMine] = useState(false),
+    [filters, setFilters] = useState<any>({}),
+    [checked, setChecked] = useState<number[]>([]),
+    [unread, setUnread] = useState(0),
     [offset, setOffset] = useState(0),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -259,7 +271,23 @@ function App() {
       const [c, t, o] = await Promise.all([
         api<Catalog>("/catalog"),
         api<Ticket[]>(
-          `/tickets?q=${encodeURIComponent(search)}&kind=${page === "bugs" ? "bug" : page === "tickets" ? "support" : ""}&status=${status}&mine=${mine}&offset=${offset}`,
+          `/tickets?q=${encodeURIComponent(search)}&kind=${page === "bugs" ? "bug" : page === "tickets" ? "support" : ""}&status=${status}&mine=${mine}&offset=${offset}&${new URLSearchParams(
+            Object.entries(filters)
+              .filter(
+                ([k, v]) =>
+                  [
+                    "severity",
+                    "product_id",
+                    "company_id",
+                    "tag",
+                    "watching",
+                  ].includes(k) &&
+                  v !== null &&
+                  v !== undefined &&
+                  v !== "",
+              )
+              .map(([k, v]) => [k, String(v)]),
+          )}`,
         ),
         api("/reports/overview"),
       ]);
@@ -271,12 +299,37 @@ function App() {
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [user, page, search, status, mine, offset]);
+  }, [user, page, search, status, mine, offset, filters]);
+  const refreshUnread = useCallback(() => {
+    if (user && !user.must_change_password)
+      api("/notifications?unread=true")
+        .then((n) => setUnread(n.unread_count))
+        .catch(() => {});
+  }, [user]);
+  useEffect(() => {
+    refreshUnread();
+    const id = setInterval(refreshUnread, 30000);
+    return () => clearInterval(id);
+  }, [refreshUnread]);
+  useEffect(
+    () => setChecked([]),
+    [page, search, status, mine, offset, filters],
+  );
   useEffect(() => {
     api<User>("/auth/me")
       .then(setUser)
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {
+    const ended = () => {
+      setUser(null);
+      setSelected(null);
+      setUnread(0);
+      setError("");
+    };
+    window.addEventListener("rsh:session-ended", ended);
+    return () => window.removeEventListener("rsh:session-ended", ended);
   }, []);
   useEffect(() => {
     const timeout = setTimeout(refresh, 180);
@@ -332,6 +385,11 @@ function App() {
     ["tickets", staff ? "Support tickets" : "My support", Inbox],
   ];
   if (staff) nav.push(["bugs", "Issue tracker", Bug]);
+  if (staff) nav.push(["attention", "Attention needed", Clock3]);
+  nav.push(
+    ["notifications", "Notifications", Bell],
+    ["account", "My account", ShieldCheck],
+  );
   nav.push(["reports", "Reports", BarChart3]);
   if (isAdmin) nav.push(["settings", "Settings", Settings]);
   function navigate(p: string) {
@@ -341,6 +399,7 @@ function App() {
     setSearch("");
     setMine(false);
     setOffset(0);
+    setFilters({});
   }
   return (
     <div className="shell">
@@ -361,7 +420,7 @@ function App() {
           </span>
         </a>
         <div className="workspace-label">
-          WORKSPACE <span>v0.1</span>
+          WORKSPACE <span>v0.2</span>
         </div>
         <nav>
           {nav.map(([key, text, Icon]) => (
@@ -374,6 +433,7 @@ function App() {
               <Icon size={19} />
               <span>{text}</span>
               {key === "tickets" && openCount > 0 && <b>{openCount}</b>}
+              {key === "notifications" && unread > 0 && <b>{unread}</b>}
             </button>
           ))}
         </nav>
@@ -451,6 +511,12 @@ function App() {
                 refresh();
               }}
             />
+          ) : page === "account" ? (
+            <Account user={user} onChanged={setUser} />
+          ) : page === "notifications" ? (
+            <Notifications onOpen={open} onRead={refreshUnread} />
+          ) : page === "attention" ? (
+            <Attention onOpen={open} />
           ) : page === "settings" ? (
             <Admin catalog={catalog} refresh={refresh} user={user} />
           ) : page === "reports" ? (
@@ -597,6 +663,49 @@ function App() {
                     </button>
                   )}
                 </div>
+                <ViewTools
+                  catalog={catalog}
+                  staff={staff}
+                  filters={{
+                    ...filters,
+                    q: search,
+                    status,
+                    mine,
+                    kind:
+                      page === "bugs"
+                        ? "bug"
+                        : page === "tickets"
+                          ? "support"
+                          : "",
+                  }}
+                  onFilters={(v) => {
+                    setFilters(v);
+                    setSearch(v.q || "");
+                    setStatus(v.status || "");
+                    setMine(v.mine || false);
+                    setPage(
+                      v.kind === "bug"
+                        ? "bugs"
+                        : v.kind === "support"
+                          ? "tickets"
+                          : "overview",
+                    );
+                    setOffset(0);
+                  }}
+                  layout={view}
+                  onLayout={setView}
+                />
+                {staff && checked.length > 0 && (
+                  <BulkActions
+                    tickets={tickets.filter((t) => checked.includes(t.id))}
+                    catalog={catalog}
+                    onComplete={() => {
+                      setChecked([]);
+                      refresh();
+                      refreshUnread();
+                    }}
+                  />
+                )}
                 {tickets.length === 0 ? (
                   <div className="empty">
                     <span className="empty-icon">
@@ -637,6 +746,25 @@ function App() {
                     <table>
                       <thead>
                         <tr>
+                          {staff && (
+                            <th>
+                              <input
+                                type="checkbox"
+                                aria-label="Select all visible tickets"
+                                checked={
+                                  tickets.length > 0 &&
+                                  tickets.every((t) => checked.includes(t.id))
+                                }
+                                onChange={(e) =>
+                                  setChecked(
+                                    e.target.checked
+                                      ? tickets.map((t) => t.id)
+                                      : [],
+                                  )
+                                }
+                              />
+                            </th>
+                          )}
                           <th>Ticket</th>
                           <th>Client / project</th>
                           <th>Status</th>
@@ -648,10 +776,35 @@ function App() {
                       <tbody>
                         {tickets.map((t) => (
                           <tr key={t.id} onClick={() => open(t.id)}>
+                            {staff && (
+                              <td onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ticket ${t.id}`}
+                                  checked={checked.includes(t.id)}
+                                  onChange={(e) =>
+                                    setChecked(
+                                      e.target.checked
+                                        ? [...checked, t.id]
+                                        : checked.filter((id) => id !== t.id),
+                                    )
+                                  }
+                                />
+                              </td>
+                            )}
                             <td>
                               <button className="ticket-title">
                                 {t.title}
                               </button>
+                              {staff && (
+                                <div className="tag-list">
+                                  {t.tags?.map((tag) => (
+                                    <span className="badge" key={tag}>
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                               <small>
                                 #{String(t.id).padStart(4, "0")} <span>·</span>{" "}
                                 {label(t.incident_type)} <span>·</span>{" "}
@@ -1283,6 +1436,12 @@ function TicketDetail({
           )}
         </div>
         <aside className="ticket-sidebar">
+          <TicketExtras
+            ticket={t}
+            user={user}
+            catalog={catalog}
+            onChange={onChange}
+          />
           <section className="panel description">
             <h2>Ticket details</h2>
             {staff ? (

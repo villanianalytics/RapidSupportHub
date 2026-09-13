@@ -41,6 +41,12 @@ For updates, back up first, deploy the new backend and frontend build, and resta
 
 ## Backups
 
+### v0.1 to v0.2
+
+This upgrade creates `ticket_watchers`, `notifications`, `ticket_tags`, `ticket_duplicates`, and `saved_views`. Existing tables and data remain intact. Take a backup and preserve the previous application release, install the new backend and frontend, then restart the service. Startup creates the five tables. Rolling the application back to v0.1 can leave these unused tables in place. Do not drop them if they contain new activity you want to preserve.
+
+New activity generates notifications after deployment. Existing creators and assignees receive future updates without needing a watcher backfill. No historical inbox events are synthesized.
+
 The systemd timer runs at **07:00 UTC daily**, with 14-day retention. It briefly stops the application, takes a PostgreSQL custom-format dump and an upload archive, then restarts it. This keeps files and database references consistent. Expect a short maintenance interruption during backups.
 
 Run a backup manually:

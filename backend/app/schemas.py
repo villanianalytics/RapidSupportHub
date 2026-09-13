@@ -20,6 +20,10 @@ class PasswordChange(BaseModel):
     new_password: str = Field(min_length=12, max_length=256)
 
 
+class PasswordReset(BaseModel):
+    temporary_password: str = Field(min_length=12, max_length=256)
+
+
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9_.@-]+$")
     name: str = Field(min_length=1, max_length=160)
@@ -110,6 +114,62 @@ class TicketUpdate(BaseModel):
     linked_bug_id: int | None = None
     resolution: str | None = Field(default=None, max_length=20000)
     reason: str = Field(default="", max_length=2000)
+
+
+class TicketOrganization(BaseModel):
+    version: int
+    tags: list[str] | None = Field(default=None, max_length=12)
+    duplicate_of_id: int | None = None
+
+    @model_validator(mode="after")
+    def clean_tags(self):
+        if self.tags is not None:
+            self.tags = sorted(set(t.strip().lower() for t in self.tags if t.strip()))
+            if any(
+                len(t) > 40 or any(not (c.isalnum() or c in "-_ ") for c in t) for t in self.tags
+            ):
+                raise ValueError(
+                    "Tags must be at most 40 letters, numbers, spaces, hyphens or underscores"
+                )
+        return self
+
+
+class TicketReference(BaseModel):
+    id: int
+    version: int
+
+
+class BulkUpdate(BaseModel):
+    tickets: list[TicketReference] = Field(min_length=1, max_length=100)
+    status: Status | None = None
+    assignee_id: int | None = None
+    resolution: str | None = Field(default=None, max_length=20000)
+
+    @model_validator(mode="after")
+    def changes(self):
+        if len({t.id for t in self.tickets}) != len(self.tickets):
+            raise ValueError("Select each ticket only once")
+        if self.status is None and "assignee_id" not in self.model_fields_set:
+            raise ValueError("Choose an assignment or status change")
+        return self
+
+
+class ViewConfig(BaseModel):
+    q: str = Field(default="", max_length=200)
+    kind: Literal["", "support", "bug"] = ""
+    status: Status | Literal[""] = ""
+    mine: bool = False
+    watching: bool = False
+    severity: Severity | Literal[""] = ""
+    product_id: int | None = None
+    company_id: int | None = None
+    tag: str = Field(default="", max_length=40)
+    layout: Literal["list", "board"] = "list"
+
+
+class ViewInput(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    config: ViewConfig
 
 
 class MessageInput(BaseModel):

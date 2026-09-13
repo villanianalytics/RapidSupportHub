@@ -129,3 +129,40 @@ class Report(Base):
     name: Mapped[str] = mapped_column(String(160))
     shared: Mapped[bool] = mapped_column(Boolean, default=False)
     config: Mapped[dict] = mapped_column(JSON)
+
+
+class Watcher(Base):
+    __tablename__ = "ticket_watchers"
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    internal: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class TicketTag(Base):
+    __tablename__ = "ticket_tags"
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+
+
+class TicketDuplicate(Base):
+    __tablename__ = "ticket_duplicates"
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)
+    duplicate_of_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
+
+
+class SavedView(Base):
+    __tablename__ = "saved_views"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    config: Mapped[dict] = mapped_column(JSON)

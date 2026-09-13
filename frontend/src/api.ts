@@ -26,6 +26,11 @@ export type SLACycle = {
   paused: boolean;
 };
 export type Ticket = {
+  watching?: boolean;
+  watchers?: { id: number; name: string }[];
+  tags?: string[];
+  duplicate_of_id?: number | null;
+  attention?: string[];
   id: number;
   title: string;
   description: string;
@@ -88,6 +93,8 @@ export async function api<T = any>(
     body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401 && path !== "/auth/login")
+      window.dispatchEvent(new Event("rsh:session-ended"));
     let data;
     try {
       data = await response.json();

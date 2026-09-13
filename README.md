@@ -14,7 +14,18 @@ A lightweight, self-hosted support portal and internal issue tracker, built with
 - Dedicated automation accounts with expiring, scoped, revocable REST API keys.
 - Responsive interface, secure session cookies, Argon2 password hashing, first-login password changes, and upload authorization.
 
-Email ingestion, email delivery, and notifications are intentionally **not enabled in v0.1**. Conversations happen through the portal.
+In-app notifications are enabled. Email ingestion and delivery remain deferred; conversations happen through the portal.
+
+## Daily operations (v0.2)
+
+- **My account** lets users change their password. Administrators can reset another human user's password or require a change under **Settings → People & permissions → Password options**. Both administrator actions revoke existing sessions and API credentials. Temporary passwords must be replaced at login.
+- **Notifications** shows assignments, replies, private notes (staff only), and status/approval activity. Creators, current assignees, and ticket watchers receive relevant events, excluding their own actions. Notifications are rechecked against current permissions; watching never grants access. Staff can add colleagues as watchers from ticket details. Inboxes refresh every 30 seconds.
+- **Attention needed** ranks active tickets with breached SLAs, approaching SLAs (80% elapsed), unanswered customer conversations, or no assignee. Pending-approval and closed tickets are excluded. Categories can overlap; filters and counts respect ticket access.
+- Ticket lists support personal saved views, severity/product/client/tag filters, and a Watching filter. Saved views retain search, status, assignment, filters, and list/board layout.
+- Staff can manage tags and same-kind duplicate links in ticket details. Links preserve both records and SLA history, and cannot form cycles. Tags and duplicate links are internal.
+- Staff can select up to 100 visible tickets and change assignment or status together. Every ticket's version, permissions, and resolution rules must pass; otherwise the entire action rolls back.
+
+These features are available through the REST API documented at `/api/docs`. No historical notifications are generated on upgrade.
 
 ## Local development
 
@@ -121,12 +132,12 @@ The test uses a disposable SQLite database and test-only credentials. Restart th
 
 See [deployment instructions](docs/DEPLOYMENT.md) for Ubuntu, PostgreSQL, systemd, nginx, TLS, backups, and restore checks.
 
-## Deliberate v0.1 boundaries
+## Deliberate boundaries
 
 - Single support organization. Staff roles have workspace-wide access; per-project staff restrictions are not implemented.
 - Accounts are administrator-created. Self-registration, self-service password recovery, SSO, and MFA are not implemented.
-- Reports cover ticket records and the four SLA measurements, not arbitrary SQL, custom database joins, or a general-purpose BI engine. SLA alerts are visual; automated escalation and notification delivery are future work.
+- Reports cover ticket records and the four SLA measurements, not arbitrary SQL, custom database joins, or a general-purpose BI engine. SLA attention is visible in the queue; automated escalation and email delivery are future work.
 - Reports run synchronously; this release is intended for a small support team. Large installations will need query optimization and background exports.
-- Schema creation is for initial installation. Add versioned migrations before changing a deployed schema; `create_all` does not upgrade existing tables.
+- v0.2 adds five tables without changing existing tables. Back up before deploying; startup creates the new tables. Future changes to existing columns require versioned migrations because `create_all` does not upgrade them.
 - Attachments are authorized downloads with a 10 MB limit, not inline previews. Malware scanning and per-client storage quotas are not included.
 - Backups are stored on the same server by default. Configure off-server replication to protect against server loss.

@@ -1676,3 +1676,162 @@ td small span {
     font-size: 27px;
   }
 }
+/* Account, subscriptions, and personal work queues. */
+.account-panel {
+  max-width: 620px;
+}
+.notification-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  padding: 20px 24px;
+  border: 0;
+  border-bottom: 1px solid var(--border, #e5ebe7);
+  background: transparent;
+}
+.notification-row.unread {
+  background: #f1faf5;
+}
+.notification-row > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.notification-row small {
+  display: block;
+  margin-top: 6px;
+  color: #66786e;
+}
+.notification-row time {
+  color: #66786e;
+  font-size: 12px;
+}
+.notification-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d7dfda;
+  flex-shrink: 0;
+}
+.unread .notification-dot {
+  background: #208455;
+}
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 5px 0;
+}
+.tag-list .badge {
+  font-size: 11px;
+  background: #eef4f0;
+  color: #466352;
+}
+.tag-list .danger {
+  background: #fee9e7;
+  color: #a53329;
+}
+.watcher-list {
+  margin: 14px 0;
+}
+.watcher-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.view-tools {
+  border-top: 1px solid #e5ebe7;
+  padding: 14px 24px;
+  background: #fafcfb;
+}
+.advanced-filters,
+.saved-view-tools,
+.saved-view-tools form,
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.advanced-filters > * {
+  max-width: 210px;
+}
+.advanced-filters input:not([type="checkbox"]) {
+  width: 160px;
+}
+.saved-view-tools {
+  margin-top: 12px;
+}
+.saved-view-tools input {
+  width: 200px;
+}
+.bulk-actions {
+  padding: 16px 24px;
+  border-block: 1px solid #c7dfd1;
+  background: #edf7f1;
+}
+.bulk-actions > .error {
+  width: 100%;
+}
+.attention-stats .stat {
+  text-align: left;
+}
+.attention-stats .stat strong,
+.attention-stats .stat small {
+  display: block;
+  margin-top: 12px;
+}
+.attention-stats .stat strong {
+  font-size: 30px;
+}
+.attention-stats .chosen {
+  outline: 2px solid #258354;
+}
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #258354;
+}
+.panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  color: #66786e;
+  font-size: 12px;
+}
+.panel-footer > div {
+  display: flex;
+  gap: 10px;
+}
+@media (max-width: 650px) {
+  .notification-row {
+    padding: 16px;
+    flex-wrap: wrap;
+  }
+  .notification-row time {
+    margin-left: 24px;
+  }
+  .view-tools,
+  .bulk-actions {
+    padding: 12px;
+  }
+  .advanced-filters > * {
+    max-width: 100%;
+    flex: 1 1 135px;
+  }
+  .saved-view-tools form {
+    width: 100%;
+  }
+  .saved-view-tools input {
+    min-width: 100px;
+    flex: 1;
+  }
+  .sidebar nav {
+    overflow-y: auto;
+  }
+}

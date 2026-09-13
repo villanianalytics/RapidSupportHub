@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, KeyRound, Plus, ShieldCheck } from "lucide-react";
 import { api, Catalog, date, label, User } from "./api";
-import { Field } from "./main";
+import { Field, Modal } from "./main";
 
 const roleOptions = [
   "admin",
@@ -74,6 +74,7 @@ export function Admin({
     [config, setConfig] = useState<any>(structuredClone(defaultConfig)),
     [policyName, setPolicyName] = useState("Standard support"),
     [editUser, setEditUser] = useState<User | null>(null),
+    [resetUser, setResetUser] = useState<User | null>(null),
     [newRoles, setNewRoles] = useState<string[]>(["agent"]);
   async function load() {
     const [u, p, k] = await Promise.all([
@@ -262,7 +263,12 @@ export function Admin({
                         </small>
                       </td>
                       <td>{u.manage_reports ? "Can manage" : "View shared"}</td>
-                      <td>{u.active ? "Active" : "Disabled"}</td>
+                      <td>
+                        {u.active ? "Active" : "Disabled"}
+                        {u.must_change_password && !u.automation && (
+                          <small>Password change required</small>
+                        )}
+                      </td>
                       <td>
                         <button
                           className="text-button"
@@ -271,6 +277,14 @@ export function Admin({
                         >
                           Edit access
                         </button>
+                        {!u.automation && u.id !== user.id && (
+                          <button
+                            className="text-button"
+                            onClick={() => setResetUser(u)}
+                          >
+                            Password options
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -278,6 +292,73 @@ export function Admin({
               </table>
             </div>
           </section>
+          {resetUser && (
+            <Modal
+              title={`Password options · ${resetUser.name}`}
+              onClose={() => setResetUser(null)}
+            >
+              <div className="description">
+                <p className="muted">
+                  Both options sign this user out and revoke their API
+                  credentials. They must change their password at the next
+                  login.
+                </p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const f = new FormData(e.currentTarget);
+                    execute(async () => {
+                      await api(
+                        `/admin/users/${resetUser.id}/reset-password`,
+                        "POST",
+                        { temporary_password: f.get("temporary") },
+                      );
+                      setResetUser(null);
+                    }, "Temporary password set. Share it securely with the user.");
+                  }}
+                >
+                  <Field label="New temporary password">
+                    <input
+                      name="temporary"
+                      type="password"
+                      required
+                      minLength={12}
+                      maxLength={256}
+                      autoComplete="new-password"
+                    />
+                  </Field>
+                  <button className="primary" disabled={busy}>
+                    Reset password
+                  </button>
+                </form>
+                <hr />
+                <p>
+                  Keep their current password and require a replacement at
+                  sign-in.
+                </p>
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    execute(async () => {
+                      await api(
+                        `/admin/users/${resetUser.id}/require-password-change`,
+                        "POST",
+                      );
+                      setResetUser(null);
+                    }, "Password change required at next login.")
+                  }
+                >
+                  Require password change
+                </button>
+                {error && (
+                  <div role="alert" className="error">
+                    {error}
+                  </div>
+                )}
+              </div>
+            </Modal>
+          )}
           {editUser && (
             <section className="panel description">
               <h2>Edit access · {editUser.name}</h2>
