@@ -18,6 +18,8 @@ In-app notifications are enabled. Email ingestion and delivery remain deferred; 
 
 ## Daily operations (v0.2)
 
+The portal adapts to phones and tablets: labeled mobile navigation, ticket and attention cards, expandable filters, larger touch controls, and stacked forms. Open a Kanban card to change status on touch devices. Wide administrative/report tables can be swiped horizontally. Browser coverage includes 320, 390, 768, and 1024-pixel viewports plus a touch-enabled customer workflow.
+
 Microsoft Entra ID / Azure AD single sign-on is available in **Settings → Single sign-on** as of v0.3. See [SSO setup](docs/SSO.md) for app registration, explicit user mappings, and secret management. Local password login remains available.
 
 - **My account** lets users change their password. Administrators can reset another human user's password or require a change under **Settings → People & permissions → Password options**. Both administrator actions revoke existing sessions and API credentials. Temporary passwords must be replaced at login.

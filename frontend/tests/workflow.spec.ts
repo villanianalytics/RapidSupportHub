@@ -148,6 +148,7 @@ test("administrator setup, customer conversation, Kanban and reports", async ({
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("button", { name: "Overview", exact: true }).click();
   await page.screenshot({
     path: "test-results/overview-mobile.png",
@@ -586,4 +587,180 @@ test("Microsoft connection configuration and sign-in entry point", async ({
     "/11111111-1111-4111-8111-111111111111/oauth2/v2.0/authorize",
   );
   expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+});
+
+test("phone and tablet navigation, ticket creation, replies and status changes", async ({
+  page,
+}) => {
+  const headers = {
+    Origin: "http://127.0.0.1:5173",
+    "X-Requested-With": "RapidSupportHub",
+  };
+  await page.request.post("/api/auth/login", {
+    headers,
+    data: { username: "SupportAdmin", password: "Changed-local-e2e-456!" },
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const fit = async () =>
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  const navigate = async (name: string) => {
+    if ((page.viewportSize()?.width || 0) <= 850)
+      await page.getByRole("button", { name: "Open navigation" }).click();
+    await page.getByRole("button", { name, exact: true }).click();
+  };
+  for (const width of [320, 390, 768, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: "Your support, at a glance." }),
+    ).toBeVisible();
+    await navigate("Support tickets");
+    await expect(
+      page.getByRole("button", { name: "Queue test one", exact: true }),
+    ).toBeVisible();
+    await fit();
+    if (width <= 850) {
+      expect(
+        await page
+          .locator(".ticket-list")
+          .evaluate((e) => e.scrollWidth <= e.clientWidth),
+      ).toBe(true);
+      await page.getByRole("button", { name: "Open navigation" }).click();
+      await page.keyboard.press("Escape");
+      await expect(
+        page.getByRole("button", { name: "Open navigation" }),
+      ).toBeFocused();
+    }
+    await page.screenshot({
+      path: `test-results/tickets-${width}.png`,
+      fullPage: true,
+    });
+    await navigate("Attention needed");
+    await expect(
+      page.getByRole("heading", { name: "Attention needed", exact: true }),
+    ).toBeVisible();
+    await fit();
+    await navigate("Settings");
+    await page
+      .getByRole("button", { name: "Single sign-on", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Microsoft Entra ID", exact: true }),
+    ).toBeVisible();
+    await fit();
+    await page.getByRole("button", { name: "People & permissions" }).click();
+    await fit();
+    await navigate("Reports");
+    await page.getByRole("button", { name: "Run report", exact: true }).click();
+    await expect(page.getByText(/accessible tickets/)).toBeVisible();
+    await fit();
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await navigate("Support tickets");
+  await page.getByRole("button", { name: "New ticket", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  await modal.getByLabel("Title", { exact: true }).fill("Created from a phone");
+  await modal
+    .getByLabel("Product / project", { exact: true })
+    .selectOption({ label: "RapidCube" });
+  await modal
+    .getByLabel("Client company", { exact: true })
+    .selectOption({ label: "Acme Analytics" });
+  await modal
+    .getByLabel("Description", { exact: true })
+    .fill("A complete mobile support conversation.");
+  await fit();
+  await modal
+    .getByRole("button", { name: "Create ticket", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Created from a phone" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Reply", { exact: true })
+    .fill("Reply sent from a phone.");
+  await page.getByRole("button", { name: "Send reply", exact: true }).click();
+  await expect(
+    page.getByText("Reply sent from a phone.", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Move to status").selectOption("in_progress");
+  await page.getByRole("button", { name: "Save status & resolution" }).click();
+  await expect(page.locator(".detail-heading .badge")).toHaveText(
+    "In progress",
+  );
+  await fit();
+  await page.screenshot({
+    path: "test-results/mobile-ticket-detail.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Back to workspace" }).click();
+  await page.getByRole("button", { name: "Kanban view" }).click();
+  await page.getByRole("button", { name: /Created from a phone/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Created from a phone" }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("customer portal works with touch input", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+    baseURL: "http://127.0.0.1:5173",
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto("/");
+    await page.getByLabel("Username", { exact: true }).fill("client-reviewer");
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill("Client-changed-pass-456!");
+    await page.getByRole("button", { name: "Sign in", exact: true }).tap();
+    await expect(
+      page.getByRole("heading", { name: "Your support, at a glance." }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Open navigation" }).tap();
+    await expect(
+      page.getByRole("button", { name: "Settings", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "My support", exact: true }).tap();
+    await page
+      .getByRole("button", { name: "More filters & saved views" })
+      .tap();
+    await expect(page.getByLabel("Filter by severity")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Hide filters & saved views" })
+      .tap();
+    await page.getByRole("button", { name: "New ticket", exact: true }).tap();
+    const modal = page.getByRole("dialog");
+    await modal
+      .getByLabel("Title", { exact: true })
+      .fill("Customer touch request");
+    await modal
+      .getByLabel("Product / project")
+      .selectOption({ label: "RapidCube" });
+    await modal.getByLabel("Description").fill("Sent using the touch portal.");
+    await modal
+      .getByRole("button", { name: "Create ticket", exact: true })
+      .tap();
+    await expect(
+      page.getByRole("heading", { name: "Customer touch request" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Private note", exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    await context.close();
+  }
 });

@@ -334,7 +334,7 @@ export function Attention({ onOpen }: { onOpen: (id: number) => void }) {
         </div>
         {data.items.length ? (
           <div className="table-scroll">
-            <table>
+            <table className="responsive-records attention-records">
               <thead>
                 <tr>
                   <th>Ticket</th>
@@ -346,7 +346,7 @@ export function Attention({ onOpen }: { onOpen: (id: number) => void }) {
               <tbody>
                 {data.items.map((t: Ticket) => (
                   <tr key={t.id}>
-                    <td>
+                    <td className="record-title">
                       <button
                         className="ticket-title"
                         onClick={() => onOpen(t.id)}
@@ -357,7 +357,7 @@ export function Attention({ onOpen }: { onOpen: (id: number) => void }) {
                         #{t.id} · {date(t.created_at)}
                       </small>
                     </td>
-                    <td>
+                    <td data-label="Needs attention">
                       <div className="tag-list">
                         {t.attention?.map((r) => (
                           <span
@@ -369,11 +369,11 @@ export function Attention({ onOpen }: { onOpen: (id: number) => void }) {
                         ))}
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Client / product">
                       {t.company}
                       <small>{t.product}</small>
                     </td>
-                    <td>{t.assignee}</td>
+                    <td data-label="Assigned to">{t.assignee}</td>
                   </tr>
                 ))}
               </tbody>

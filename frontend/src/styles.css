@@ -1855,3 +1855,399 @@ input[type="checkbox"] {
     overflow-y: auto;
   }
 }
+
+/* Small-screen workspaces retain the full ticket workflow. */
+.mobile-filter-toggle {
+  display: none;
+}
+@media (max-width: 850px) {
+  .mobile-filter-toggle {
+    display: flex;
+    margin: 0 14px 14px;
+  }
+  .extra-ticket-filters:not(.filters-expanded) {
+    display: none;
+  }
+}
+@media (min-width: 601px) and (max-width: 850px) {
+  .responsive-records tbody {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+.mobile-menu-button,
+.mobile-menu-close,
+.nav-backdrop,
+.mobile-select-label {
+  display: none;
+}
+.table-scroll {
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.description,
+.panel,
+.field,
+.settings-grid > *,
+.report-layout > * {
+  min-width: 0;
+}
+@media (max-width: 1024px) {
+  .panel-heading,
+  .detail-heading {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .toolbar,
+  .advanced-filters,
+  .saved-view-tools {
+    flex-wrap: wrap;
+  }
+  .toolbar .search {
+    min-width: 150px;
+  }
+  .tabs {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .tabs button {
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .description p,
+  .notification-row strong,
+  .detail-heading h1 {
+    overflow-wrap: anywhere;
+  }
+  input:not([type="checkbox"]),
+  select,
+  textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  button,
+  .primary,
+  .secondary,
+  .icon-button,
+  .text-button {
+    min-height: 44px;
+  }
+  .icon-button {
+    min-width: 44px;
+  }
+  .kanban {
+    scroll-snap-type: x proximity;
+  }
+  .kanban-column {
+    flex: 0 0 260px;
+    scroll-snap-align: start;
+  }
+  .kanban-card {
+    touch-action: pan-x pan-y;
+  }
+  .report-chart {
+    overflow-x: auto;
+  }
+  .bulk-actions > * {
+    max-width: 100%;
+  }
+}
+@media (max-width: 850px) {
+  .sidebar {
+    display: none;
+  }
+  .shell > main {
+    margin-left: 0;
+    width: 100%;
+    min-width: 0;
+  }
+  .mobile-menu-button,
+  .mobile-menu-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mobile-menu-close {
+    align-self: flex-end;
+    flex-shrink: 0;
+  }
+  .sidebar.navigation-open {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 88vw);
+    height: 100dvh;
+    padding: 12px 18px max(18px, env(safe-area-inset-bottom));
+    z-index: 101;
+    overflow-y: auto;
+  }
+  .navigation-open .brand > span:not(.brand-icon),
+  .navigation-open .nav-item > span,
+  .navigation-open .nav-item > b,
+  .navigation-open .profile > div,
+  .navigation-open .profile > .avatar {
+    display: initial;
+  }
+  .navigation-open .brand,
+  .navigation-open .nav-item {
+    justify-content: flex-start;
+  }
+  .navigation-open nav {
+    margin-top: 20px;
+    overflow-y: auto;
+  }
+  .navigation-open .nav-item {
+    padding: 12px;
+  }
+  .navigation-open .profile {
+    justify-content: space-between;
+  }
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: 0;
+    background: #122e2580;
+    z-index: 100;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #fff;
+    padding: 6px 12px;
+    height: 64px;
+  }
+  .topbar > div:first-child {
+    min-width: 0;
+    gap: 6px;
+  }
+  .topbar > div:first-child > .muted,
+  .topbar > div:first-child > svg,
+  .local-date {
+    display: none;
+  }
+  .topbar strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar-right {
+    flex-shrink: 0;
+  }
+  .content {
+    padding: 20px 14px;
+  }
+  .page-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .page-heading h1 {
+    font-size: 26px;
+  }
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stat small {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .stat > div {
+    font-size: 12px;
+  }
+  .panel-heading {
+    padding: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .panel-heading .segmented {
+    margin-left: auto;
+  }
+  .segmented button {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .toolbar {
+    flex-wrap: wrap;
+    padding: 14px;
+  }
+  .toolbar .search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .toolbar > select,
+  .toolbar > .filter-button {
+    flex: 1;
+  }
+  .advanced-filters > * {
+    flex: 1 1 140px;
+    max-width: 100%;
+  }
+  .saved-view-tools form,
+  .saved-view-tools > select {
+    width: 100%;
+  }
+  .bulk-actions {
+    align-items: stretch;
+  }
+  .bulk-actions > strong,
+  .bulk-actions > .primary {
+    flex-basis: 100%;
+  }
+  .bulk-actions > select {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+  .form-grid,
+  .detail-layout,
+  .ticket-sidebar,
+  .settings-grid,
+  .report-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ticket-sidebar {
+    display: flex;
+    flex-direction: column;
+  }
+  .ticket-sidebar > * {
+    width: 100%;
+  }
+  .detail-heading h1 {
+    font-size: 25px;
+  }
+  .description {
+    padding: 18px;
+  }
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    padding: 18px;
+  }
+  .overlay {
+    padding: 12px;
+  }
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+  .modal-actions button {
+    flex: 1;
+  }
+  .composer-footer {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .composer-footer .primary {
+    width: 100%;
+  }
+  .responsive-records {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+  .responsive-records thead,
+  .responsive-records tbody {
+    display: block;
+  }
+  .responsive-records thead tr {
+    display: block;
+  }
+  .responsive-records th {
+    display: none;
+  }
+  .responsive-records th.selection-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    padding: 12px 16px;
+  }
+  .mobile-select-label {
+    display: inline;
+    font-size: 13px;
+  }
+  .responsive-records tbody {
+    padding: 0 12px 12px;
+  }
+  .responsive-records tbody tr {
+    display: block;
+    position: relative;
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: white;
+  }
+  .responsive-records td {
+    display: block;
+    max-width: none;
+    padding: 6px 0;
+    border: 0;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+  .responsive-records td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .responsive-records .record-title {
+    padding-right: 34px;
+    margin-bottom: 7px;
+  }
+  .responsive-records .ticket-title {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .responsive-records td small {
+    font-size: 12px;
+  }
+  .responsive-records .selection-cell {
+    position: absolute;
+    top: 12px;
+    right: 8px;
+    padding: 0;
+    z-index: 1;
+  }
+  .selection-cell input,
+  .selection-heading input {
+    width: 22px;
+    height: 22px;
+    margin: 11px;
+  }
+  .attention-records thead {
+    display: none;
+  }
+  .responsive-records .tag-list {
+    margin: 4px 0;
+  }
+  .table-scroll:not(:has(.responsive-records))::before {
+    content: "Swipe horizontally to see all columns";
+    display: block;
+    padding: 10px 14px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .notification-row {
+    padding: 16px;
+  }
+  .notification-row time {
+    width: 100%;
+  }
+  .auth-form {
+    padding: 24px;
+  }
+  .auth-help {
+    flex-wrap: wrap;
+    text-align: center;
+  }
+}

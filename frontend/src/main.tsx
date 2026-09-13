@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   List,
   LogOut,
+  Menu,
   Plus,
   Search,
   Settings,
@@ -245,6 +246,49 @@ function Auth({
 }
 
 function App() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null),
+    drawer = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const elements = () =>
+      Array.from(
+        drawer.current?.querySelectorAll<HTMLElement>("a,button") || [],
+      ).filter((e) => e.getClientRects().length && !e.hasAttribute("disabled"));
+    elements()[0]?.focus();
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        return;
+      }
+      if (e.key === "Tab") {
+        const list = elements(),
+          first = list[0],
+          last = list[list.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    const resize = () => {
+      if (innerWidth > 850) setMenuOpen(false);
+    };
+    document.addEventListener("keydown", key);
+    window.addEventListener("resize", resize);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", key);
+      window.removeEventListener("resize", resize);
+      menuButton.current?.focus();
+    };
+  }, [menuOpen]);
   const [requestedStatus, setRequestedStatus] = useState<string | undefined>();
   const [user, setUser] = useState<User | null>(null),
     [loading, setLoading] = useState(true),
@@ -328,6 +372,7 @@ function App() {
   useEffect(() => {
     const ended = () => {
       setUser(null);
+      setMenuOpen(false);
       setSelected(null);
       setUnread(0);
       setError("");
@@ -416,6 +461,7 @@ function App() {
   nav.push(["reports", "Reports", BarChart3]);
   if (isAdmin) nav.push(["settings", "Settings", Settings]);
   function navigate(p: string) {
+    setMenuOpen(false);
     setPage(p);
     setSelected(null);
     setStatus("");
@@ -426,7 +472,25 @@ function App() {
   }
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {menuOpen && (
+        <button
+          className="nav-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
+      <aside
+        ref={drawer}
+        id="workspace-navigation"
+        className={`sidebar ${menuOpen ? "navigation-open" : ""}`}
+      >
+        <button
+          className="mobile-menu-close icon-button"
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+        >
+          <X size={22} />
+        </button>
         <a
           className="brand"
           href="#"
@@ -450,6 +514,7 @@ function App() {
             <button
               key={key}
               aria-label={text}
+              title={text}
               className={page === key ? "nav-item active" : "nav-item"}
               onClick={() => navigate(key)}
             >
@@ -480,6 +545,7 @@ function App() {
                 await api("/auth/logout", "POST");
                 setUser(null);
                 setSelected(null);
+                setMenuOpen(false);
               }}
             >
               <LogOut size={17} />
@@ -487,9 +553,19 @@ function App() {
           </div>
         </div>
       </aside>
-      <main>
+      <main inert={menuOpen}>
         <header className="topbar">
           <div>
+            <button
+              ref={menuButton}
+              className="mobile-menu-button icon-button"
+              aria-label="Open navigation"
+              aria-expanded={menuOpen}
+              aria-controls="workspace-navigation"
+              onClick={() => setMenuOpen(true)}
+            >
+              <Menu size={23} />
+            </button>
             <span className="muted">Workspace</span>
             <ChevronRight size={14} />
             <strong>{nav.find((n) => n[0] === page)?.[1]}</strong>
@@ -686,38 +762,53 @@ function App() {
                     </button>
                   )}
                 </div>
-                <ViewTools
-                  catalog={catalog}
-                  staff={staff}
-                  filters={{
-                    ...filters,
-                    q: search,
-                    status,
-                    mine,
-                    kind:
-                      page === "bugs"
-                        ? "bug"
-                        : page === "tickets"
-                          ? "support"
-                          : "",
-                  }}
-                  onFilters={(v) => {
-                    setFilters(v);
-                    setSearch(v.q || "");
-                    setStatus(v.status || "");
-                    setMine(v.mine || false);
-                    setPage(
-                      v.kind === "bug"
-                        ? "bugs"
-                        : v.kind === "support"
-                          ? "tickets"
-                          : "overview",
-                    );
-                    setOffset(0);
-                  }}
-                  layout={view}
-                  onLayout={setView}
-                />
+                <button
+                  className="mobile-filter-toggle secondary"
+                  aria-expanded={filtersOpen}
+                  aria-controls="extra-ticket-filters"
+                  onClick={() => setFiltersOpen(!filtersOpen)}
+                >
+                  {filtersOpen
+                    ? "Hide filters & saved views"
+                    : "More filters & saved views"}
+                </button>
+                <div
+                  id="extra-ticket-filters"
+                  className={`extra-ticket-filters ${filtersOpen ? "filters-expanded" : ""}`}
+                >
+                  <ViewTools
+                    catalog={catalog}
+                    staff={staff}
+                    filters={{
+                      ...filters,
+                      q: search,
+                      status,
+                      mine,
+                      kind:
+                        page === "bugs"
+                          ? "bug"
+                          : page === "tickets"
+                            ? "support"
+                            : "",
+                    }}
+                    onFilters={(v) => {
+                      setFilters(v);
+                      setSearch(v.q || "");
+                      setStatus(v.status || "");
+                      setMine(v.mine || false);
+                      setPage(
+                        v.kind === "bug"
+                          ? "bugs"
+                          : v.kind === "support"
+                            ? "tickets"
+                            : "overview",
+                      );
+                      setOffset(0);
+                    }}
+                    layout={view}
+                    onLayout={setView}
+                  />
+                </div>
                 {staff && checked.length > 0 && (
                   <BulkActions
                     tickets={tickets.filter((t) => checked.includes(t.id))}
@@ -766,11 +857,11 @@ function App() {
                   </div>
                 ) : view === "list" ? (
                   <div className="table-scroll">
-                    <table>
+                    <table className="ticket-list responsive-records">
                       <thead>
                         <tr>
                           {staff && (
-                            <th>
+                            <th className="selection-heading">
                               <input
                                 type="checkbox"
                                 aria-label="Select all visible tickets"
@@ -786,6 +877,9 @@ function App() {
                                   )
                                 }
                               />
+                              <span className="mobile-select-label">
+                                Select all visible
+                              </span>
                             </th>
                           )}
                           <th>Ticket</th>
@@ -800,7 +894,10 @@ function App() {
                         {tickets.map((t) => (
                           <tr key={t.id} onClick={() => open(t.id)}>
                             {staff && (
-                              <td onClick={(e) => e.stopPropagation()}>
+                              <td
+                                className="selection-cell"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <input
                                   type="checkbox"
                                   aria-label={`Select ticket ${t.id}`}
@@ -815,7 +912,7 @@ function App() {
                                 />
                               </td>
                             )}
-                            <td>
+                            <td className="record-title">
                               <button className="ticket-title">
                                 {t.title}
                               </button>
@@ -834,20 +931,20 @@ function App() {
                                 {date(t.created_at)}
                               </small>
                             </td>
-                            <td>
+                            <td data-label="Client / project">
                               {t.company}
                               <small>{t.product}</small>
                             </td>
-                            <td>
+                            <td data-label="Status">
                               <Badge status={t.status} />
                             </td>
-                            <td>
+                            <td data-label="Severity">
                               <span className={`severity ${t.severity}`}>
                                 <i />
                                 {label(t.severity)}
                               </span>
                             </td>
-                            <td>
+                            <td data-label="Assigned to">
                               <span className="assignee">
                                 <span className="mini-avatar">
                                   {t.assignee === "Unassigned"
@@ -858,7 +955,7 @@ function App() {
                               </span>
                             </td>
                             {staff && (
-                              <td>
+                              <td data-label="SLA">
                                 <SLAIndicator ticket={t} />
                               </td>
                             )}
@@ -933,7 +1030,7 @@ function App() {
                 <div className="panel-footer">
                   <span>
                     {view === "board" && staff
-                      ? "Drag a card to change status. Open it to enter a resolution."
+                      ? "Open a card to change status or enter a resolution. With a mouse, you can also drag it between columns."
                       : "Your permissions determine which tickets appear here."}
                   </span>
                   <div>
