@@ -161,6 +161,57 @@ test("administrator setup, customer conversation, Kanban and reports", async ({
   expect(errors).toEqual([]);
 });
 
+test("late expired-session responses cannot sign out a new login", async ({
+  page,
+}) => {
+  const headers = {
+    Origin: "http://127.0.0.1:5173",
+    "X-Requested-With": "RapidSupportHub",
+  };
+  await page.request.post("/api/auth/login", {
+    headers,
+    data: { username: "SupportAdmin", password: "Changed-local-e2e-456!" },
+  });
+  let release: () => void = () => {};
+  let intercepted: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const ready = new Promise<void>((resolve) => (intercepted = resolve));
+  await page.route(
+    "**/api/catalog",
+    async (route) => {
+      intercepted();
+      await held;
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Sign in to continue" }),
+      });
+    },
+    { times: 1 },
+  );
+  await page.goto("/");
+  await ready;
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Username", { exact: true }).fill("SupportAdmin");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("Changed-local-e2e-456!");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Your support, at a glance." }),
+  ).toBeVisible();
+  const expired = page.waitForResponse(
+    (r) => r.url().endsWith("/api/catalog") && r.status() === 401,
+  );
+  release();
+  await expired;
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await page.getByRole("button", { name: "My account", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Account & security" }),
+  ).toBeVisible();
+});
+
 test("customer approval, private-data isolation, and shared record reports", async ({
   page,
 }) => {
@@ -400,6 +451,9 @@ test("account administration, watchers, saved views, bulk actions and attention"
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Welcome back." }),
+  ).toBeVisible();
   await page.getByLabel("Username", { exact: true }).fill("operations-tester");
   await page
     .getByLabel("Password", { exact: true })

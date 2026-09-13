@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  SessionChangedError,
   Catalog,
   date,
   duration,
@@ -297,6 +298,7 @@ function App() {
         Object.fromEntries(o.rows.map((r: any) => [r.group, r.tickets])),
       );
     } catch (e) {
+      if (e instanceof SessionChangedError) return;
       setError((e as Error).message);
     }
   }, [user, page, search, status, mine, offset, filters]);
@@ -370,7 +372,26 @@ function App() {
   }
   if (loading) return <div className="loading">Opening your workspace…</div>;
   if (!user || user.must_change_password)
-    return <Auth user={user} onLogin={setUser} />;
+    return (
+      <Auth
+        user={user}
+        onLogin={(next) => {
+          setUser(next);
+          setPage("overview");
+          setSelected(null);
+          setTickets([]);
+          setCounts({});
+          setCatalog({ products: [], companies: [], agents: [] });
+          setFilters({});
+          setSearch("");
+          setStatus("");
+          setMine(false);
+          setOffset(0);
+          setUnread(0);
+          setError("");
+        }}
+      />
+    );
   const staff = isStaff(user),
     isAdmin = user.roles.includes("admin"),
     total = Object.values(counts).reduce((a, b) => a + b, 0),

@@ -75,11 +75,14 @@ export type Ticket = {
     created_at: string;
   }[];
 };
+let sessionGeneration = 0;
+export class SessionChangedError extends Error {}
 export async function api<T = any>(
   path: string,
   method = "GET",
   body?: unknown,
 ): Promise<T> {
+  const generation = sessionGeneration;
   const form = body instanceof FormData;
   const response = await fetch("/api" + path, {
     method,
@@ -93,6 +96,8 @@ export async function api<T = any>(
     body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   if (!response.ok) {
+    if (generation !== sessionGeneration)
+      throw new SessionChangedError("Session changed");
     if (response.status === 401 && path !== "/auth/login")
       window.dispatchEvent(new Event("rsh:session-ended"));
     let data;
@@ -107,7 +112,12 @@ export async function api<T = any>(
         : JSON.stringify(data.detail),
     );
   }
-  return response.json();
+  const data = await response.json();
+  if (generation !== sessionGeneration)
+    throw new SessionChangedError("Session changed");
+  if (["/auth/login", "/auth/logout", "/auth/password"].includes(path))
+    sessionGeneration++;
+  return data;
 }
 export const statuses = [
   "new",
