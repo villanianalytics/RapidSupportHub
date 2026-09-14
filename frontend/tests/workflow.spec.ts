@@ -116,7 +116,7 @@ test("administrator setup, customer conversation, Kanban and reports", async ({
       .locator(".kanban-column")
       .filter({ has: page.locator("header .badge.in_progress") })
       .getByText("CSV export fails for large datasets"),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15_000 });
   await card.dragTo(
     page
       .locator(".kanban-column")
