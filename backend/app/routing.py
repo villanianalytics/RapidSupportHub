@@ -10,6 +10,8 @@ from .models import (
     AssignmentRule,
     Audit,
     IssueCategory,
+    IssueType,
+    Product,
     SupportGroup,
     SupportGroupMember,
     Ticket,
@@ -44,8 +46,13 @@ def configuration(db):
                 "incident_type": item.incident_type,
                 "active": item.active,
                 "parent_id": item.parent_id,
+                "product_id": item.product_id,
             }
             for item in db.scalars(select(IssueCategory).order_by(IssueCategory.name))
+        ],
+        "issue_types": [
+            {"id": item.id, "name": item.name, "classification": item.classification, "active": item.active}
+            for item in db.scalars(select(IssueType).order_by(IssueType.name))
         ],
         "groups": [
             {"id": item.id, "name": item.name, "user_ids": by_group.get(item.id, [])}
@@ -73,7 +80,7 @@ def get_configuration(user=Depends(require_admin), db: Session = Depends(get_db)
 def create_category(
     data: s.CategoryInput, user=Depends(require_admin), db: Session = Depends(get_db)
 ):
-    validate_parent(db, data.parent_id, data.kind)
+    validate_category(db, data, None)
     item = IssueCategory(**data.model_dump())
     db.add(item)
     db.add(Audit(actor_id=user.id, action="issue_category_created", details={"name": item.name}))
@@ -91,7 +98,7 @@ def update_category(
     item = db.get(IssueCategory, category_id)
     if not item:
         raise HTTPException(404, "Issue category not found")
-    validate_parent(db, data.parent_id, data.kind, category_id)
+    validate_category(db, data, category_id)
     for key, value in data.model_dump().items():
         setattr(item, key, value)
     db.add(Audit(actor_id=user.id, action="issue_category_updated", details={"id": item.id}))
@@ -99,7 +106,18 @@ def update_category(
     return configuration(db)
 
 
-def validate_parent(db, parent_id, kind, category_id=None):
+def validate_category(db, data, category_id=None):
+    if not db.get(Product, data.product_id):
+        raise HTTPException(422, "Unknown product")
+    duplicate = db.scalar(select(IssueCategory).where(
+        IssueCategory.product_id == data.product_id,
+        IssueCategory.parent_id == data.parent_id,
+        func.lower(IssueCategory.name) == data.name.strip().lower(),
+        IssueCategory.id != (category_id or 0),
+    ))
+    if duplicate:
+        raise HTTPException(422, "That category name already exists in this product")
+    parent_id, kind = data.parent_id, data.kind
     if parent_id is None:
         return
     if parent_id == category_id:
@@ -107,8 +125,33 @@ def validate_parent(db, parent_id, kind, category_id=None):
     parent = db.get(IssueCategory, parent_id)
     if not parent or parent.parent_id is not None:
         raise HTTPException(422, "Choose a top-level parent category")
+    if parent.product_id != data.product_id:
+        raise HTTPException(422, "Category and subcategory must belong to the same product")
     if parent.kind != "both" and kind != parent.kind:
         raise HTTPException(422, "Subcategory applicability must match its parent")
+
+
+@router.post("/issue-types", status_code=201)
+def create_issue_type(data: s.IssueTypeInput, user=Depends(require_admin), db: Session = Depends(get_db)):
+    if db.scalar(select(IssueType).where(func.lower(IssueType.name) == data.name.strip().lower())):
+        raise HTTPException(422, "That issue type already exists")
+    item = IssueType(**data.model_dump())
+    db.add(item)
+    db.add(Audit(actor_id=user.id, action="issue_type_created", details={"name": item.name}))
+    db.commit()
+    return configuration(db)
+
+
+@router.patch("/issue-types/{issue_type_id}")
+def update_issue_type(issue_type_id: int, data: s.IssueTypeInput, user=Depends(require_admin), db: Session = Depends(get_db)):
+    item = db.get(IssueType, issue_type_id)
+    if not item:
+        raise HTTPException(404, "Issue type not found")
+    for key, value in data.model_dump().items():
+        setattr(item, key, value)
+    db.add(Audit(actor_id=user.id, action="issue_type_updated", details={"id": item.id}))
+    db.commit()
+    return configuration(db)
 
 
 @router.post("/groups", status_code=201)
@@ -176,15 +219,20 @@ def save_rule(
 
 
 def assign(db, ticket):
+    routing_category_id = ticket.subcategory_id or ticket.category_id
     rule = (
         db.scalar(
             select(AssignmentRule)
-            .where(AssignmentRule.category_id == ticket.category_id)
+            .where(AssignmentRule.category_id == routing_category_id)
             .with_for_update()
         )
-        if ticket.category_id
+        if routing_category_id
         else None
     )
+    if not rule and ticket.subcategory_id and ticket.category_id:
+        rule = db.scalar(select(AssignmentRule).where(
+            AssignmentRule.category_id == ticket.category_id
+        ).with_for_update())
     if not rule or rule.strategy == "manual":
         return None
     if rule.strategy == "fixed":

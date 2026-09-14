@@ -418,7 +418,7 @@ export const guides: Guide[] = [
         title: "Pick up and work a ticket",
         steps: [
           "Open Support tickets. Use Assigned to me or the available filters to find work.",
-          "Open a ticket and set Assigned to, Severity, or Issue category in Ticket details. Assignment requires the Ticket assigner permission or Administrator role.",
+          "Open a ticket and use Ticket details to set its issue type, product category, optional subcategory, severity, or assignee. Assignment requires the Ticket assigner permission or Administrator role.",
           "Choose a status under Move to status and select Save status & resolution. Add public replies to keep the customer informed; use Private note for internal discussion.",
         ],
       },

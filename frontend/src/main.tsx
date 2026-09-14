@@ -324,6 +324,7 @@ function App() {
       companies: [],
       agents: [],
       categories: [],
+      issue_types: [],
     }),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [counts, setCounts] = useState<Record<string, number>>({}),
@@ -465,7 +466,7 @@ function App() {
             setSelected(null);
             setTickets([]);
             setCounts({});
-            setCatalog({ products: [], companies: [], agents: [], categories: [] });
+            setCatalog({ products: [], companies: [], agents: [], categories: [], issue_types: [] });
             setFilters({});
             setSearch("");
             setStatus("");
@@ -1283,6 +1284,8 @@ function CreateTicket({
 }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [productId, setProductId] = useState(0);
+  const [categoryId, setCategoryId] = useState(0);
   const staff = isStaff(user);
   return (
     <Modal
@@ -1306,6 +1309,8 @@ function CreateTicket({
                 company_id: f.get("company") ? Number(f.get("company")) : null,
                 severity: f.get("severity"),
                 category_id: Number(f.get("category")),
+                subcategory_id: f.get("subcategory") ? Number(f.get("subcategory")) : null,
+                issue_type_id: Number(f.get("issue_type")),
                 reproduction: f.get("reproduction") || "",
                 affected_version: f.get("version") || "",
               });
@@ -1335,7 +1340,7 @@ function CreateTicket({
         </Field>
         <div className="form-grid">
           <Field label="Product / project">
-            <select name="product" required defaultValue="">
+            <select name="product" required value={productId || ""} onChange={(e)=>{setProductId(Number(e.target.value));setCategoryId(0)}}>
               <option value="" disabled>
                 Select a product
               </option>
@@ -1377,12 +1382,24 @@ function CreateTicket({
               ))}
             </select>
           </Field>
-          <Field label={kind === "bug" ? "Issue type" : "Issue category"}>
-            <select name="category" defaultValue="" required>
+          <Field label="Issue type">
+            <select name="issue_type" defaultValue="" required>
+              <option value="" disabled>Select an issue type</option>
+              {catalog.issue_types.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Issue category">
+            <select name="category" value={categoryId || ""} required onChange={(e)=>setCategoryId(Number(e.target.value))}>
               <option value="" disabled>Select a category</option>
-              {catalog.categories.filter((c)=>c.kind===kind||c.kind==="both").map((c) => (
-                <option key={c.id} value={c.id}>{c.display_name}</option>
+              {catalog.categories.filter((c)=>c.product_id===productId&&!c.parent_id&&(c.kind===kind||c.kind==="both")).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
+            </select>
+          </Field>
+          <Field label="Subcategory (optional)">
+            <select name="subcategory" defaultValue="" key={categoryId}>
+              <option value="">No subcategory</option>
+              {catalog.categories.filter((c)=>c.parent_id===categoryId&&(c.kind===kind||c.kind==="both")).map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
         </div>
@@ -1716,14 +1733,26 @@ function TicketDetail({
                     ))}
                   </select>
                 </Field>
+                <Field label="Issue type">
+                  <select value={t.issue_type_id || ""} disabled={busy} onChange={(e)=>patch({issue_type_id:Number(e.target.value)})}>
+                    {!t.issue_type_id && <option value="">{t.issue_type}</option>}
+                    {catalog.issue_types.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                </Field>
                 <Field label="Issue category">
                   <select
                     value={t.category_id || ""}
                     disabled={busy}
-                    onChange={(e) => patch({ category_id: Number(e.target.value) })}
+                    onChange={(e) => patch({ category_id: Number(e.target.value), subcategory_id: null })}
                   >
-                    {!t.category_id && <option value="">{label(t.incident_type)}</option>}
-                    {catalog.categories.filter((c)=>c.kind===t.kind||c.kind==="both").map((c)=><option key={c.id} value={c.id}>{c.display_name}</option>)}
+                    {!t.category_id && <option value="">Legacy / uncategorized</option>}
+                    {catalog.categories.filter((c)=>c.product_id===t.product_id&&!c.parent_id&&(c.kind===t.kind||c.kind==="both")).map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Subcategory">
+                  <select value={t.subcategory_id || ""} disabled={busy || !t.category_id} onChange={(e)=>patch({subcategory_id:e.target.value?Number(e.target.value):null})}>
+                    <option value="">No subcategory</option>
+                    {catalog.categories.filter((c)=>c.parent_id===t.category_id&&(c.kind===t.kind||c.kind==="both")).map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </Field>
                 <Field label="Move to status">

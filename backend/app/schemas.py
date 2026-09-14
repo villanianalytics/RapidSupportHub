@@ -57,6 +57,13 @@ class CategoryInput(BaseModel):
     incident_type: Literal["outage", "bug", "question", "enhancement"] = "question"
     active: bool = True
     parent_id: int | None = None
+    product_id: int
+
+
+class IssueTypeInput(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    classification: Literal["outage", "bug", "question", "enhancement"] = "question"
+    active: bool = True
 
 
 class GroupMembers(BaseModel):
@@ -132,6 +139,8 @@ class TicketCreate(BaseModel):
     company_id: int | None = None
     product_id: int
     category_id: int | None = None
+    subcategory_id: int | None = None
+    issue_type_id: int | None = None
     reproduction: str = Field(default="", max_length=20000)
     affected_version: str = Field(default="", max_length=100)
 
@@ -142,6 +151,8 @@ class TicketUpdate(BaseModel):
     severity: Severity | None = None
     incident_type: Incident | None = None
     category_id: int | None = None
+    subcategory_id: int | None = None
+    issue_type_id: int | None = None
     assignee_id: int | None = None
     linked_bug_id: int | None = None
     resolution: str | None = Field(default=None, max_length=20000)

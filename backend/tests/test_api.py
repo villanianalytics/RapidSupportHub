@@ -890,11 +890,8 @@ def test_profiles_categories_and_assignment_rules(setup):
     from app.models import IssueCategory, SupportGroup
 
     client, company, _, product, users = setup
-    issue_types = {
-        item["name"]
-        for item in client.get("/api/catalog").json()["categories"]
-        if item["kind"] in {"bug", "both"}
-    }
+    catalog = client.get("/api/catalog").json()
+    issue_types = {item["name"] for item in catalog["issue_types"]}
     assert {"Bug", "Question", "Enhancement"} <= issue_types
     dev = next(item for item in client.get("/api/admin/users").json() if item["id"] == users["dev_id"])
     updated = client.patch(
@@ -916,18 +913,8 @@ def test_profiles_categories_and_assignment_rules(setup):
         db.commit()
         users["dev"] = {"Authorization": "Bearer " + raw}
 
-    category_result = client.post(
-        "/api/admin/routing/categories",
-        json={
-            "name": "Data import enhancement",
-            "kind": "both",
-            "incident_type": "enhancement",
-            "active": True,
-        },
-    )
-    category = next(
-        item for item in category_result.json()["categories"] if item["name"] == "Data import enhancement"
-    )
+    category = next(item for item in catalog["categories"] if item["name"] == "Data")
+    enhancement = next(item for item in catalog["issue_types"] if item["name"] == "Enhancement")
     child_result = client.post(
         "/api/admin/routing/categories",
         json={
@@ -936,6 +923,7 @@ def test_profiles_categories_and_assignment_rules(setup):
             "incident_type": "enhancement",
             "active": True,
             "parent_id": category["id"],
+            "product_id": product,
         },
     )
     assert child_result.status_code == 201
@@ -952,6 +940,7 @@ def test_profiles_categories_and_assignment_rules(setup):
                 "incident_type": "enhancement",
                 "active": True,
                 "parent_id": child["id"],
+                "product_id": product,
             },
         ).status_code
         == 422
@@ -961,7 +950,7 @@ def test_profiles_categories_and_assignment_rules(setup):
     child_catalog = next(
         item for item in client.get("/api/catalog").json()["categories"] if item["id"] == child["id"]
     )
-    assert child_catalog["display_name"] == "Data import enhancement › Excel workbook import"
+    assert child_catalog["display_name"] == "Data › Excel workbook import"
 
     group_result = client.post(
         "/api/admin/routing/groups", json={"name": "Data team", "description": ""}
@@ -991,9 +980,12 @@ def test_profiles_categories_and_assignment_rules(setup):
         company,
         product,
         category_id=category["id"],
-        incident_type="question",
+        subcategory_id=child["id"],
+        issue_type_id=enhancement["id"],
     )
-    assert created["category"] == "Data import enhancement"
+    assert created["category"] == "Data"
+    assert created["subcategory"] == "Excel workbook import"
+    assert created["issue_type"] == "Enhancement"
     assert created["incident_type"] == "enhancement"
     assert created["assignee_id"] == users["dev_id"]
     assert created["submitter"]["email"] == ""

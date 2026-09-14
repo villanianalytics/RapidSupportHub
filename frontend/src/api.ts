@@ -16,7 +16,8 @@ export type Catalog = {
   products: { id: number; name: string; description: string }[];
   companies: { id: number; name: string }[];
   agents: { id: number; name: string }[];
-  categories: { id: number; name: string; display_name: string; kind: string; incident_type: string; parent_id: number | null }[];
+  categories: { id: number; name: string; display_name: string; kind: string; incident_type: string; parent_id: number | null; product_id: number }[];
+  issue_types: { id: number; name: string; classification: string }[];
 };
 export type SLACycle = {
   id: number;
@@ -40,7 +41,11 @@ export type Ticket = {
   kind: string;
   incident_type: string;
   category_id: number | null;
+  subcategory_id: number | null;
+  issue_type_id: number | null;
   category: string;
+  subcategory: string;
+  issue_type: string;
   severity: string;
   status: string;
   company_id: number | null;

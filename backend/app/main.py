@@ -30,6 +30,7 @@ from .models import (
     Company,
     Credential,
     IssueCategory,
+    IssueType,
     Message,
     Policy,
     Product,
@@ -54,6 +55,26 @@ from .security import (
 )
 
 
+def seed_product_categories(db, product_id):
+    for name in ("Application", "Data", "Business Rule", "Report"):
+        exists = db.scalar(
+            select(IssueCategory).where(
+                IssueCategory.product_id == product_id,
+                IssueCategory.parent_id.is_(None),
+                IssueCategory.name == name,
+            )
+        )
+        if not exists:
+            db.add(IssueCategory(name=name, kind="both", active=True, product_id=product_id))
+
+
+def seed_issue_types(db):
+    defaults = (("Bug", "bug"), ("Question", "question"), ("Enhancement", "enhancement"))
+    for name, classification in defaults:
+        if not db.scalar(select(IssueType).where(IssueType.name == name)):
+            db.add(IssueType(name=name, classification=classification, active=True))
+
+
 @asynccontextmanager
 async def lifespan(app):
     Base.metadata.create_all(engine)
@@ -65,10 +86,22 @@ async def lifespan(app):
     if "category_id" not in {column["name"] for column in columns}:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE tickets ADD COLUMN category_id INTEGER"))
+    ticket_columns = {column["name"] for column in inspect(engine).get_columns("tickets")}
+    with engine.begin() as connection:
+        if "subcategory_id" not in ticket_columns:
+            connection.execute(text("ALTER TABLE tickets ADD COLUMN subcategory_id INTEGER"))
+        if "issue_type_id" not in ticket_columns:
+            connection.execute(text("ALTER TABLE tickets ADD COLUMN issue_type_id INTEGER"))
     columns = inspect(engine).get_columns("issue_categories")
     if "parent_id" not in {column["name"] for column in columns}:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE issue_categories ADD COLUMN parent_id INTEGER"))
+    if "product_id" not in {column["name"] for column in inspect(engine).get_columns("issue_categories")}:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE issue_categories ADD COLUMN product_id INTEGER"))
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE issue_categories DROP CONSTRAINT IF EXISTS issue_categories_name_key"))
     with SessionLocal() as db:
         auditing.initialize(db)
         if not db.scalar(select(User).limit(1)):
@@ -88,24 +121,10 @@ async def lifespan(app):
                 )
             )
             db.commit()
-        defaults = [
-            ("Question", "both", "question"),
-            ("Service outage", "support", "outage"),
-            ("Software problem", "support", "bug"),
-            ("Bug", "bug", "bug"),
-            ("Enhancement", "both", "enhancement"),
-        ]
-        existing = {item.name: item for item in db.scalars(select(IssueCategory))}
-        for name, kind, incident_type in defaults:
-            if name not in existing:
-                db.add(
-                    IssueCategory(name=name, kind=kind, incident_type=incident_type, active=True)
-                )
-            elif name in {"Question", "Enhancement"}:
-                # These baseline types must remain available to both support and engineering.
-                existing[name].kind = "both"
-                existing[name].active = True
-                existing[name].incident_type = incident_type
+        seed_issue_types(db)
+        db.flush()
+        for product in db.scalars(select(Product)):
+            seed_product_categories(db, product.id)
         if db.new or db.dirty:
             db.commit()
     worker = None
@@ -338,6 +357,10 @@ def catalog(user: User = Depends(identity), db: Session = Depends(get_db)):
         ],
         "companies": [{"id": c.id, "name": c.name} for c in companies],
         "agents": [{"id": u.id, "name": u.name} for u in users if staff(u)],
+        "issue_types": [
+            {"id": item.id, "name": item.name, "classification": item.classification}
+            for item in db.scalars(select(IssueType).where(IssueType.active.is_(True)).order_by(IssueType.name))
+        ],
         "categories": [
             {
                 "id": item.id,
@@ -345,6 +368,7 @@ def catalog(user: User = Depends(identity), db: Session = Depends(get_db)):
                 "kind": item.kind,
                 "incident_type": item.incident_type,
                 "parent_id": item.parent_id,
+                "product_id": item.product_id,
                 "display_name": (
                     f"{db.get(IssueCategory, item.parent_id).name} › {item.name}"
                     if item.parent_id
@@ -353,7 +377,7 @@ def catalog(user: User = Depends(identity), db: Session = Depends(get_db)):
             }
             for item in db.scalars(
                 select(IssueCategory)
-                .where(IssueCategory.active.is_(True))
+                .where(IssueCategory.active.is_(True), IssueCategory.product_id.is_not(None))
                 .order_by(IssueCategory.name)
             )
         ],
@@ -442,6 +466,9 @@ def create_product(
 ):
     product = Product(name=data.name.strip(), description=data.description)
     db.add(product)
+    db.flush()
+    seed_issue_types(db)
+    seed_product_categories(db, product.id)
     audit(db, user, "product_created", details={"name": product.name})
     db.commit()
     return {"id": product.id, "name": product.name}
@@ -540,7 +567,7 @@ def ticket_dict(db, ticket, user, detail=False):
     ]
     if staff(user):
         fields += ["reproduction", "affected_version", "linked_bug_id"]
-    fields += ["category_id"]
+    fields += ["category_id", "subcategory_id", "issue_type_id"]
     result = {k: getattr(ticket, k) for k in fields}
     result.update(workspace.organization(db, ticket, user))
     creator = db.get(User, ticket.creator_id)
@@ -558,11 +585,11 @@ def ticket_dict(db, ticket, user, detail=False):
     result["product"] = db.get(Product, ticket.product_id).name
     result["company"] = db.get(Company, ticket.company_id).name if ticket.company_id else "Internal"
     category = db.get(IssueCategory, ticket.category_id) if ticket.category_id else None
-    result["category"] = (
-        f"{db.get(IssueCategory, category.parent_id).name} › {category.name}"
-        if category and category.parent_id
-        else category.name if category else ticket.incident_type
-    )
+    subcategory = db.get(IssueCategory, ticket.subcategory_id) if ticket.subcategory_id else None
+    issue_type = db.get(IssueType, ticket.issue_type_id) if ticket.issue_type_id else None
+    result["category"] = category.name if category else "Legacy / uncategorized"
+    result["subcategory"] = subcategory.name if subcategory else ""
+    result["issue_type"] = issue_type.name if issue_type else ticket.incident_type.replace("_", " ").title()
     if staff(user):
         result["sla"] = sla.summary(db, ticket)
         result["attention"] = workspace.attention_reasons(db, ticket, result["sla"])
@@ -667,20 +694,39 @@ def create_ticket(
     exists(db, Company, values["company_id"], "company")
     if data.kind == "support" and not values["company_id"]:
         raise HTTPException(422, "Support tickets require a client company")
+    issue_type = db.get(IssueType, data.issue_type_id) if data.issue_type_id else None
+    if not issue_type:
+        issue_type = db.scalar(select(IssueType).where(
+            IssueType.active.is_(True), IssueType.classification == data.incident_type
+        ).order_by(IssueType.id))
+    if not issue_type and data.issue_type_id is None:
+        issue_type = IssueType(name=data.incident_type.replace("_", " ").title(), classification=data.incident_type, active=True)
+        db.add(issue_type)
+        db.flush()
+    if not issue_type or not issue_type.active:
+        raise HTTPException(422, "Choose an active issue type")
     category = db.get(IssueCategory, data.category_id) if data.category_id else None
     if not category:
         category = db.scalar(
             select(IssueCategory)
-            .where(IssueCategory.active.is_(True), IssueCategory.kind.in_([data.kind, "both"]))
+            .where(IssueCategory.active.is_(True), IssueCategory.product_id == data.product_id,
+                   IssueCategory.parent_id.is_(None), IssueCategory.kind.in_([data.kind, "both"]))
             .order_by(IssueCategory.id)
         )
-    if not category or category.kind not in {data.kind, "both"} or not category.active:
+    if (not category or category.kind not in {data.kind, "both"} or not category.active
+            or category.product_id != data.product_id or category.parent_id is not None):
         raise HTTPException(422, "Choose an active issue category")
+    subcategory = db.get(IssueCategory, data.subcategory_id) if data.subcategory_id else None
+    if data.subcategory_id and (not subcategory or not subcategory.active
+            or subcategory.parent_id != category.id or subcategory.product_id != data.product_id
+            or subcategory.kind not in {data.kind, "both"}):
+        raise HTTPException(422, "Choose a subcategory within the selected category")
     values["category_id"] = category.id
-    values["incident_type"] = "bug" if data.kind == "bug" else category.incident_type
+    values["subcategory_id"] = subcategory.id if subcategory else None
+    values["issue_type_id"] = issue_type.id
+    values["incident_type"] = issue_type.classification
     if data.kind == "bug":
         values["company_id"] = None
-        values["incident_type"] = "bug"
     ticket = Ticket(**values, creator_id=user.id)
     policy = (
         db.scalar(select(Policy).where(Policy.company_id == values["company_id"]))
@@ -784,9 +830,24 @@ def apply_ticket_update(
         validate_assignee(db, data.assignee_id)
     if "category_id" in fields:
         category = db.get(IssueCategory, data.category_id)
-        if not category or not category.active or category.kind not in {ticket.kind, "both"}:
+        if (not category or not category.active or category.kind not in {ticket.kind, "both"}
+                or category.product_id != ticket.product_id or category.parent_id is not None):
             raise HTTPException(422, "Choose an active issue category")
-        data.incident_type = "bug" if ticket.kind == "bug" else category.incident_type
+        if "subcategory_id" not in fields:
+            data.subcategory_id = None
+            fields.add("subcategory_id")
+    if "subcategory_id" in fields and data.subcategory_id is not None:
+        category_id = data.category_id if "category_id" in fields else ticket.category_id
+        subcategory = db.get(IssueCategory, data.subcategory_id)
+        if (not subcategory or not subcategory.active or subcategory.parent_id != category_id
+                or subcategory.product_id != ticket.product_id
+                or subcategory.kind not in {ticket.kind, "both"}):
+            raise HTTPException(422, "Choose a subcategory within the selected category")
+    if "issue_type_id" in fields:
+        issue_type = db.get(IssueType, data.issue_type_id)
+        if not issue_type or not issue_type.active:
+            raise HTTPException(422, "Choose an active issue type")
+        data.incident_type = issue_type.classification
         fields.add("incident_type")
     if "linked_bug_id" in fields and data.linked_bug_id is not None:
         bug = db.get(Ticket, data.linked_bug_id)
@@ -814,7 +875,7 @@ def apply_ticket_update(
     changed_other = False
     for field in fields - {"status"}:
         value = getattr(data, field)
-        if value is None and field not in {"assignee_id", "linked_bug_id"}:
+        if value is None and field not in {"assignee_id", "linked_bug_id", "subcategory_id"}:
             raise HTTPException(422, f"{field} cannot be null")
         previous = getattr(ticket, field)
         setattr(ticket, field, value)

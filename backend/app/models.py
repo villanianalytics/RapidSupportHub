@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base, now
@@ -63,6 +63,10 @@ class Ticket(Base):
     kind: Mapped[str] = mapped_column(String(20), default="support")
     incident_type: Mapped[str] = mapped_column(String(30), default="question")
     category_id: Mapped[int | None] = mapped_column(ForeignKey("issue_categories.id"), index=True)
+    subcategory_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issue_categories.id"), index=True
+    )
+    issue_type_id: Mapped[int | None] = mapped_column(ForeignKey("issue_types.id"), index=True)
     severity: Mapped[str] = mapped_column(String(10), default="sev3")
     status: Mapped[str] = mapped_column(String(40), default="new", index=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
@@ -167,12 +171,22 @@ class EmailDelivery(Base):
 
 class IssueCategory(Base):
     __tablename__ = "issue_categories"
+    __table_args__ = (UniqueConstraint("product_id", "parent_id", "name", name="uq_issue_category_scope"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     kind: Mapped[str] = mapped_column(String(20), default="both")
     incident_type: Mapped[str] = mapped_column(String(30), default="question")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("issue_categories.id"), index=True)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), index=True)
+
+
+class IssueType(Base):
+    __tablename__ = "issue_types"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    classification: Mapped[str] = mapped_column(String(30), default="question")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class SupportGroup(Base):

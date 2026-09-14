@@ -3,50 +3,25 @@ import { Check, Plus } from "lucide-react";
 import { api, Catalog, label } from "./api";
 import { Field } from "./main";
 
-type Category = { id: number; name: string; kind: string; incident_type: string; active: boolean; parent_id: number | null };
-type Group = { id: number; name: string; user_ids: number[] };
-type Rule = { category_id: number; strategy: string; group_id: number | null; assignee_id: number | null };
+type Category={id:number;name:string;kind:string;active:boolean;parent_id:number|null;product_id:number};
+type IssueType={id:number;name:string;classification:string;active:boolean};
+type Group={id:number;name:string;user_ids:number[]};
+type Rule={category_id:number;strategy:string;group_id:number|null;assignee_id:number|null};
+type Config={categories:Category[];issue_types:IssueType[];groups:Group[];rules:Rule[]};
 
-export function RoutingSettings({ catalog, refresh }: { catalog: Catalog; refresh: () => Promise<void> }) {
-  const [data, setData] = useState<{ categories: Category[]; groups: Group[]; rules: Rule[] }>({ categories: [], groups: [], rules: [] });
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const load = () => api("/admin/routing").then(setData);
-  useEffect(() => { load().catch((e) => setError(e.message)); }, []);
-  async function run(action: () => Promise<unknown>, message: string) {
-    setError(""); setNotice("");
-    try { await action(); await Promise.all([load(), refresh()]); setNotice(message); }
-    catch (e) { setError((e as Error).message); }
-  }
-  return <>
-    {error && <div className="error">{error}</div>}
-    {notice && <div className="success"><Check size={16}/>{notice}</div>}
-    <div className="settings-grid">
-      <section className="panel description">
-        <h2>Issue categories and types</h2>
-        <p className="muted">Categories appear on support tickets; applicable options appear as types when logging internal issues. Bug, Question, and Enhancement are always available. Their classification connects them to SLA reporting.</p>
-        <div className="entity-list">{data.categories.map((c) => <div key={c.id}><strong>{c.parent_id ? `${data.categories.find((p)=>p.id===c.parent_id)?.name} › ${c.name}` : c.name}</strong><small>{label(c.incident_type)} · {c.kind}</small></div>)}</div>
-        <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); run(() => api("/admin/routing/categories", "POST", { name: f.get("name"), kind: f.get("kind"), incident_type: f.get("type"), active: true, parent_id: f.get("parent") ? Number(f.get("parent")) : null }), "Category created."); e.currentTarget.reset(); }}>
-          <Field label="Category or subcategory name"><input name="name" required /></Field>
-          <div className="form-grid">
-            <Field label="Parent category (optional)"><select name="parent"><option value="">Top-level category</option>{data.categories.filter((c)=>!c.parent_id).map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-            <Field label="Available for"><select name="kind"><option value="both">Tickets and issues</option><option value="support">Support tickets</option><option value="bug">Internal issues</option></select></Field>
-            <Field label="SLA classification"><select name="type">{["question","bug","outage","enhancement"].map((v)=><option key={v} value={v}>{label(v)}</option>)}</select></Field>
-          </div>
-          <button className="primary"><Plus size={16}/>Add category</button>
-        </form>
-      </section>
-      <section className="panel description">
-        <h2>Support groups</h2>
-        <p className="muted">Group membership supplies agents for round-robin and lowest-volume assignment.</p>
-        {data.groups.map((g) => <div key={g.id} className="routing-group"><strong>{g.name}</strong>{catalog.agents.map((a)=><label className="checkbox" key={a.id}><input type="checkbox" checked={g.user_ids.includes(a.id)} onChange={(e)=>run(()=>api(`/admin/routing/groups/${g.id}/members`,"PUT",{user_ids:e.target.checked?[...g.user_ids,a.id]:g.user_ids.filter((id)=>id!==a.id)}),"Group membership updated.")}/>{a.name}</label>)}</div>)}
-        <form onSubmit={(e)=>{e.preventDefault();const f=new FormData(e.currentTarget);run(()=>api("/admin/routing/groups","POST",{name:f.get("name"),description:""}),"Support group created.");e.currentTarget.reset();}}><Field label="Group name"><input name="name" required/></Field><button className="primary"><Plus size={16}/>Add group</button></form>
-      </section>
-    </div>
-    <section className="panel description">
-      <h2>Assignment rules</h2>
-      <p className="muted">Manual leaves the ticket in its category queue. Fixed selects one person. Round robin rotates through a group. Lowest volume selects the group member with the fewest open tickets and issues.</p>
-      <div className="table-scroll"><table><thead><tr><th>Category</th><th>Strategy</th><th>Target</th></tr></thead><tbody>{data.categories.filter(c=>c.active).map((c)=>{const rule=data.rules.find(r=>r.category_id===c.id)||{category_id:c.id,strategy:"manual",group_id:null,assignee_id:null};const save=(next:Rule)=>run(()=>api("/admin/routing/rules","PUT",next),"Assignment rule saved.");return <tr key={c.id}><td>{c.parent_id ? `${data.categories.find((p)=>p.id===c.parent_id)?.name} › ${c.name}` : c.name}</td><td><select value={rule.strategy} onChange={(e)=>save({...rule,strategy:e.target.value,group_id:["round_robin","least_open"].includes(e.target.value)?data.groups[0]?.id||null:null,assignee_id:e.target.value==="fixed"?catalog.agents[0]?.id||null:null})}><option value="manual">Manual queue</option><option value="fixed">Always assign</option><option value="round_robin">Round robin</option><option value="least_open">Lowest open volume</option></select></td><td>{rule.strategy==="fixed"?<select value={rule.assignee_id||""} onChange={(e)=>save({...rule,assignee_id:Number(e.target.value)})}>{catalog.agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>:rule.strategy!=="manual"?<select value={rule.group_id||""} onChange={(e)=>save({...rule,group_id:Number(e.target.value)})}>{data.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select>:"Category queue"}</td></tr>})}</tbody></table></div>
-    </section>
-  </>;
+export function RoutingSettings({catalog,refresh}:{catalog:Catalog;refresh:()=>Promise<void>}) {
+ const [data,setData]=useState<Config>({categories:[],issue_types:[],groups:[],rules:[]});
+ const [productId,setProductId]=useState(0),[parentId,setParentId]=useState(0),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const load=()=>api<Config>("/admin/routing").then(setData);
+ useEffect(()=>{load().catch(e=>setError(e.message))},[]);
+ async function run(action:()=>Promise<unknown>,message:string){setError("");setNotice("");try{await action();await Promise.all([load(),refresh()]);setNotice(message)}catch(e){setError((e as Error).message)}}
+ const productName=(id:number)=>catalog.products.find(p=>p.id===id)?.name||"Legacy";
+ const categoryName=(c:Category)=>c.parent_id?`${data.categories.find(p=>p.id===c.parent_id)?.name} › ${c.name}`:c.name;
+ return <>{error&&<div className="error">{error}</div>}{notice&&<div className="success"><Check size={16}/>{notice}</div>}
+ <div className="settings-grid">
+  <section className="panel description"><h2>Issue types</h2><p className="muted">Issue type describes the work, such as Bug, Question, or Enhancement. Its classification drives SLA reporting.</p><div className="entity-list">{data.issue_types.map(t=><div key={t.id}><strong>{t.name}</strong><small>{label(t.classification)}{t.active?"":" · inactive"}</small></div>)}</div><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(()=>api("/admin/routing/issue-types","POST",{name:f.get("name"),classification:f.get("classification"),active:true}),"Issue type created.");e.currentTarget.reset()}}><Field label="Issue type name"><input name="name" required/></Field><Field label="SLA classification"><select name="classification">{["question","bug","outage","enhancement"].map(v=><option key={v} value={v}>{label(v)}</option>)}</select></Field><button className="primary"><Plus size={16}/>Add issue type</button></form></section>
+  <section className="panel description"><h2>Categories and subcategories</h2><p className="muted">Each product has its own categories. Choose a parent to create a dependent subcategory.</p><div className="entity-list">{data.categories.filter(c=>c.product_id).map(c=><div key={c.id}><strong>{categoryName(c)}</strong><small>{productName(c.product_id)} · {c.kind}</small></div>)}</div><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(()=>api("/admin/routing/categories","POST",{name:f.get("name"),product_id:Number(f.get("product")),parent_id:f.get("parent")?Number(f.get("parent")):null,kind:f.get("kind"),active:true,incident_type:"question"}),"Category created.");e.currentTarget.reset();setParentId(0)}}><Field label="Product"><select name="product" required value={productId||""} onChange={e=>{setProductId(Number(e.target.value));setParentId(0)}}><option value="" disabled>Select a product</option>{catalog.products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><Field label="Category or subcategory name"><input name="name" required/></Field><div className="form-grid"><Field label="Parent category (optional)"><select name="parent" value={parentId||""} onChange={e=>setParentId(Number(e.target.value))}><option value="">Top-level category</option>{data.categories.filter(c=>c.product_id===productId&&!c.parent_id).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Available for"><select name="kind"><option value="both">Tickets and issues</option><option value="support">Support tickets</option><option value="bug">Internal issues</option></select></Field></div><button className="primary"><Plus size={16}/>Add {parentId?"subcategory":"category"}</button></form></section>
+  <section className="panel description"><h2>Support groups</h2><p className="muted">Group membership supplies agents for automatic assignment.</p>{data.groups.map(g=><div key={g.id} className="routing-group"><strong>{g.name}</strong>{catalog.agents.map(a=><label className="checkbox" key={a.id}><input type="checkbox" checked={g.user_ids.includes(a.id)} onChange={e=>run(()=>api(`/admin/routing/groups/${g.id}/members`,"PUT",{user_ids:e.target.checked?[...g.user_ids,a.id]:g.user_ids.filter(id=>id!==a.id)}),"Group membership updated.")}/>{a.name}</label>)}</div>)}<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(()=>api("/admin/routing/groups","POST",{name:f.get("name"),description:""}),"Support group created.");e.currentTarget.reset()}}><Field label="Group name"><input name="name" required/></Field><button className="primary"><Plus size={16}/>Add group</button></form></section>
+ </div>
+ <section className="panel description"><h2>Assignment rules</h2><p className="muted">A subcategory rule takes priority. Without one, the parent category rule applies.</p><div className="table-scroll"><table><thead><tr><th>Product and category</th><th>Strategy</th><th>Target</th></tr></thead><tbody>{data.categories.filter(c=>c.active&&c.product_id).map(c=>{const rule=data.rules.find(r=>r.category_id===c.id)||{category_id:c.id,strategy:"manual",group_id:null,assignee_id:null};const save=(next:Rule)=>run(()=>api("/admin/routing/rules","PUT",next),"Assignment rule saved.");return <tr key={c.id}><td><small>{productName(c.product_id)}</small><br/>{categoryName(c)}</td><td><select value={rule.strategy} onChange={e=>save({...rule,strategy:e.target.value,group_id:["round_robin","least_open"].includes(e.target.value)?data.groups[0]?.id||null:null,assignee_id:e.target.value==="fixed"?catalog.agents[0]?.id||null:null})}><option value="manual">Manual queue</option><option value="fixed">Always assign</option><option value="round_robin">Round robin</option><option value="least_open">Lowest open volume</option></select></td><td>{rule.strategy==="fixed"?<select value={rule.assignee_id||""} onChange={e=>save({...rule,assignee_id:Number(e.target.value)})}>{catalog.agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>:rule.strategy!=="manual"?<select value={rule.group_id||""} onChange={e=>save({...rule,group_id:Number(e.target.value)})}>{data.groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select>:c.parent_id?"Inherit category rule":"Category queue"}</td></tr>})}</tbody></table></div></section></>;
 }
