@@ -339,7 +339,11 @@ def callback(
     if not user or not user.active or user.automation:
         response.headers["location"] = origin() + "/?sso_error=access"
         return response
-    raw, _ = issue(db, user, kind="sso", name="Microsoft Entra")
+    from .auditing import actor
+
+    actor(user)
+    raw, credential = issue(db, user, kind="sso", name="Microsoft Entra")
+    actor(user, credential)
     db.add(Audit(actor_id=user.id, action="sso_signed_in", details={"connection_id": c.id}))
     db.commit()
     response.headers["location"] = origin() + "/"

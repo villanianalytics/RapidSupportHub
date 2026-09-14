@@ -193,3 +193,23 @@ class EntraFlow(Base):
     nonce: Mapped[str] = mapped_column(String(100))
     verifier: Mapped[str] = mapped_column(String(100))
     expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    request_id: Mapped[str] = mapped_column(String(36), index=True)
+    actor_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    actor: Mapped[str] = mapped_column(String(160), default="Anonymous")
+    auth_method: Mapped[str] = mapped_column(String(20), default="anonymous")
+    credential_id: Mapped[int | None] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(160), index=True)
+    resource: Mapped[str] = mapped_column(String(100), default="", index=True)
+    resource_id: Mapped[str] = mapped_column(String(160), default="", index=True)
+    outcome: Mapped[str] = mapped_column(String(20), index=True)
+    method: Mapped[str] = mapped_column(String(10), default="")
+    route: Mapped[str] = mapped_column(String(200), default="")
+    ip: Mapped[str] = mapped_column(String(100), default="")
+    status: Mapped[int | None] = mapped_column(Integer)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)

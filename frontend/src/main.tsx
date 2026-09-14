@@ -41,6 +41,7 @@ import { Admin } from "./settings";
 import { Reports } from "./reports";
 import { MicrosoftSignIn } from "./sso";
 import { HelpCenter, HelpDialog } from "./help";
+import { AuditCenter } from "./audit";
 import {
   Account,
   Notifications,
@@ -464,6 +465,7 @@ function App() {
   );
   nav.push(["reports", "Reports", BarChart3]);
   nav.push(["help", "Help center", BookOpen]);
+  if (isAdmin) nav.push(["audit", "Audit center", ShieldCheck]);
   if (isAdmin) nav.push(["settings", "Settings", Settings]);
   function navigate(p: string) {
     setMenuOpen(false);
@@ -605,6 +607,7 @@ function App() {
                         reports: "reports",
                         settings: "workspace",
                         help: "start",
+                        audit: "audit",
                       }[page] || "start",
                 )
               }
@@ -635,6 +638,8 @@ function App() {
                 refresh();
               }}
             />
+          ) : page === "audit" && isAdmin ? (
+            <AuditCenter />
           ) : page === "help" ? (
             <HelpCenter user={user} />
           ) : page === "account" ? (
@@ -1487,6 +1492,7 @@ function TicketDetail({
                     <button
                       type="button"
                       className={!internal ? "selected" : ""}
+                      disabled={busy}
                       onClick={() => setInternal(false)}
                     >
                       Public reply
@@ -1494,6 +1500,7 @@ function TicketDetail({
                     <button
                       type="button"
                       className={internal ? "selected" : ""}
+                      disabled={busy}
                       onClick={() => setInternal(true)}
                     >
                       Private note
@@ -1501,6 +1508,7 @@ function TicketDetail({
                   </div>
                 )}
                 <textarea
+                  disabled={busy}
                   aria-label={internal ? "Private note" : "Reply"}
                   placeholder={
                     internal

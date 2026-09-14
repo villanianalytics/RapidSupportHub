@@ -147,3 +147,11 @@ See [deployment instructions](docs/DEPLOYMENT.md) for Ubuntu, PostgreSQL, system
 - Backups are stored on the same server by default. Configure off-server replication to protect against server loss.
 
 The built-in **Help center** provides searchable, role-relevant guides for customer tickets, internal bugs, Kanban, SLAs, reports, accounts, SSO, and API automation. The top-bar question mark opens contextual help without leaving the current work; Settings tabs also link to their setup guides. Guide content lives in `frontend/src/help-content.ts` and ships with the application.
+
+## Audit center
+
+Administrators can search and export application audit events under **Audit center**. API activity (reads, writes, authentication, denials, report runs and downloads) is correlated with transactional record history through request IDs. ORM inserts, edits, deletes, and bulk updates/revocations record sanitized before/after values in the same transaction as the affected records; rolled-back changes do not survive. Audit CSV exports require an interactive administrator session and are limited to 10,000 filtered events.
+
+A new `audit_events` table is created on startup and existing business audit entries are imported once. Request starts are durable separately from outcomes so interruptions leave evidence. A successful HTTP response for a file means the response was initiated, not that delivery completed. Database triggers reject ordinary updates/deletes; database owners can still bypass them. There is no automatic pruning or portal deletion capability. Maintain secure database backups and monitor storage growth, including polling traffic. Logging failures fail the request; committed change records must be reviewed before retrying an interrupted mutation.
+
+Passwords, hashes, tokens, SSO secrets and raw HTTP bodies/query strings are excluded. Message/description/reproduction/resolution changes retain character counts rather than text. Historical records cannot supply metadata that was not originally captured. Health checks, static assets, browser-only interactions, direct SQL changes and operating-system activity are outside this application-level audit trail. Trusted proxy settings must remain restricted to the local reverse proxy for meaningful client IP attribution.

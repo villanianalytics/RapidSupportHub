@@ -219,6 +219,9 @@ def test_sso_admin_permissions_and_secret_encryption(sso):
         c = db.get(EntraConnection, cid)
         assert c.secret != SECRET and entra.cipher().decrypt(c.secret.encode()).decode() == SECRET
         assert SECRET not in str([a.details for a in db.scalars(select(Audit))])
+        from app.models import AuditEvent
+
+        assert SECRET not in str([a.details for a in db.scalars(select(AuditEvent))])
 
 
 def test_token_exchange_uses_pkce_and_fixed_tenant_endpoint(monkeypatch):

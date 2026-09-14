@@ -18,8 +18,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from . import auditing, sla, workspace
 from . import schemas as s
-from . import sla, workspace
 from .db import Base, SessionLocal, engine, get_db, now
 from .entra import router as entra_router
 from .models import (
@@ -53,6 +53,7 @@ from .security import (
 async def lifespan(app):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
+        auditing.initialize(db)
         if not db.scalar(select(User).limit(1)):
             initial = os.getenv("ADMIN_PASSWORD")
             if not initial or len(initial) < 12:
@@ -75,6 +76,7 @@ async def lifespan(app):
 
 app = FastAPI(
     title="RapidSupportHub API",
+    dependencies=[Depends(auditing.bind_request)],
     version="0.3.0",
     lifespan=lifespan,
     docs_url="/api/docs",
@@ -87,6 +89,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
+app.middleware("http")(auditing.middleware)
+app.include_router(auditing.router)
 app.include_router(operations_router)
 app.include_router(entra_router)
 
@@ -193,13 +197,17 @@ def check_login_rate(request):
 
 @app.post("/api/auth/login")
 def login(data: s.Login, request: Request, response: Response, db: Session = Depends(get_db)):
+    if auditing.context.get() is not None:
+        auditing.context.get()["attempted_username"] = data.username[:100]
     check_login_rate(request)
     user = db.scalar(select(User).where(User.username == data.username))
     valid = passwords.verify(data.password, user.password_hash if user else dummy_hash)
     if not user or not valid or not user.active or user.automation:
         raise HTTPException(401, "Invalid username or password")
     db.execute(delete(Credential).where(Credential.expires_at < now()))
-    raw, _ = issue(db, user)
+    auditing.actor(user)
+    raw, credential = issue(db, user)
+    auditing.actor(user, credential)
     audit(db, user, "signed_in")
     db.commit()
     response.set_cookie(

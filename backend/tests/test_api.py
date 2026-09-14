@@ -685,3 +685,91 @@ def test_sla_statistics_preserve_breaches_and_human_attribution(setup):
     # Resolving does not introduce an artificial zero-duration completed update.
     updates = [c for c in resolved["sla"] if c["metric"] == "update"]
     assert len(updates) == 2
+
+
+def test_comprehensive_audit(setup):
+    import json
+
+    from app.models import AuditEvent, Product
+    from sqlalchemy import text, update
+    from sqlalchemy.exc import DBAPIError
+
+    client, company, _, product, users = setup
+    item = ticket(client, company, product)
+    changed = client.patch(
+        f"/api/tickets/{item['id']}", json={"version": item["version"], "severity": "sev1"}
+    )
+    assert changed.status_code == 200
+    request_id = changed.headers["x-request-id"]
+    records = client.get("/api/admin/audit", params={"request_id": request_id}).json()["items"]
+    assert {r["outcome"] for r in records} >= {"success", "started"}
+    change = next(r for r in records if r["action"] == "tickets.updated")
+    assert change["details"]["changes"]["severity"] == {"before": "sev3", "after": "sev1"}
+    assert change["actor"] == "SupportAdmin" and change["route"] == "/api/tickets/{ticket_id}"
+    assert any(r["status"] == 200 for r in records)
+    stale = client.patch(
+        f"/api/tickets/{item['id']}", json={"version": item["version"], "severity": "sev2"}
+    )
+    assert stale.status_code == 409
+    rows = client.get(
+        "/api/admin/audit", params={"request_id": stale.headers["x-request-id"]}
+    ).json()["items"]
+    assert any(r["outcome"] == "failure" for r in rows)
+    assert not any(r["action"] == "tickets.updated" for r in rows)
+    for who in ("alice", "dev", "bot"):
+        assert client.get("/api/admin/audit", headers=users[who]).status_code == 403
+        assert client.get("/api/admin/audit?export=true", headers=users[who]).status_code == 403
+    key = client.post(
+        "/api/admin/keys",
+        json={
+            "user_id": users["bot_id"],
+            "name": "Audit test",
+            "scopes": ["read"],
+            "expires_days": 1,
+        },
+    ).json()
+    read = client.get("/api/tickets", headers={"Authorization": "Bearer " + key["token"]})
+    assert read.status_code == 200
+    activity = client.get(
+        "/api/admin/audit", params={"request_id": read.headers["x-request-id"]}
+    ).json()["items"]
+    automated = next(row for row in activity if row["outcome"] == "success")
+    assert automated["auth_method"] == "api" and automated["credential_id"] == key["id"]
+    assert automated["actor_id"] == users["bot_id"]
+    assert key["token"] not in client.get("/api/admin/audit?export=true").text
+    assert client.delete(f"/api/admin/keys/{key['id']}").status_code == 200
+    assert client.get("/api/admin/audit?action=credentials.deleted").json()["total"] > 0
+    result = client.get("/api/admin/audit?outcome=denied").json()
+    assert result["total"] >= 6
+    failure = client.post(
+        "/api/auth/login", json={"username": "nonexistent", "password": "Never-log-this-secret!"}
+    )
+    assert failure.status_code == 401
+    exported = client.get("/api/admin/audit?export=true")
+    assert exported.status_code == 200
+    assert "Never-log-this-secret" not in exported.text
+    assert "Test-only-initial" not in exported.text
+    assert "argon2" not in exported.text
+    assert "[REDACTED]" in exported.text
+    assert "nonexistent" in exported.text
+    with SessionLocal() as db:
+        record = db.get(Product, product)
+        record.name = "Rolled back audit test"
+        db.flush()
+        db.rollback()
+    assert client.get("/api/admin/audit?action=products.updated").json()["total"] == 0
+    with SessionLocal() as db:
+        with pytest.raises(RuntimeError, match="append-only"):
+            db.execute(update(AuditEvent).values(actor="tampered"))
+        db.rollback()
+        with pytest.raises(DBAPIError):
+            db.execute(text("DELETE FROM audit_events"))
+        db.rollback()
+    assert client.get("/api/admin/audit?since=invalid").status_code == 422
+    assert client.get("/api/admin/audit?limit=101").status_code == 422
+    frozen = client.get("/api/admin/audit?limit=1").json()
+    stable = client.get(
+        "/api/admin/audit", params={"snapshot": frozen["snapshot"], "limit": 1}
+    ).json()
+    assert stable["total"] == frozen["total"] and stable["items"] == frozen["items"]
+    assert json.loads(json.dumps(records))

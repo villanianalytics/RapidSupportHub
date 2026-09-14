@@ -16,6 +16,51 @@ export type Guide = {
 
 export const guides: Guide[] = [
   {
+    id: "audit",
+    title: "Investigate activity in the audit center",
+    category: "Administration",
+    audience: "admin",
+    summary:
+      "Trace requests, compare record changes, investigate failures, and export evidence.",
+    keywords: "audit history security logs activity before after investigation",
+    sections: [
+      {
+        title: "Find and investigate an event",
+        steps: [
+          "Open Audit center. Only interactive administrator accounts can access it.",
+          "Search by actor, action, resource, request ID or IP. Use exact filters and local date/time ranges to narrow the results, then select Apply filters.",
+          "Select an event to inspect its actor, authentication method, credential identifier, HTTP outcome and before-and-after changes.",
+          "Select Show correlated events to see the request start, committed changes and outcome for one operation. One operation may affect several records.",
+        ],
+      },
+      {
+        title: "Export an investigation",
+        steps: [
+          "Apply your filters and select Export filtered CSV.",
+          "The export includes all matching pages, up to 10,000 events. Narrow your filters if you exceed that limit.",
+          "Protect exported files: they contain user identities, IP addresses and operational metadata.",
+        ],
+      },
+      {
+        title: "Understand the records",
+        text: [
+          "Requests include reads, downloads, report runs, exports, sign-ins and permission failures. Bulk updates and credential revocations also generate record changes. Background polling produces read events.",
+          "A request start without a completion may indicate an interruption. A failed request may still have committed earlier changes; inspect correlated records before retrying. A successful file response does not prove the recipient received the entire file.",
+          "Passwords, hashes, tokens and SSO secrets are redacted. Message, description, reproduction and resolution contents are omitted, with character counts retained. Attachment contents, raw HTTP bodies, URL query strings and OAuth codes are not captured.",
+        ],
+      },
+      {
+        title: "Retention and coverage",
+        text: [
+          "Records are append-only. No portal or API edit/delete operation is provided, and database triggers reject ordinary changes to audit records. Privileged database owners can bypass these protections; this is not an external immutable archive.",
+          "Historical audit entries are imported once with their original timestamps and limited metadata. Previously unlogged activity cannot be reconstructed.",
+          "Events are retained without automatic pruning. Operators should monitor database growth and maintain secure backups. Health checks, static files, browser-only interactions, direct database edits and operating-system activity are outside this application audit trail.",
+        ],
+      },
+    ],
+    related: ["users", "api", "sso"],
+  },
+  {
     id: "start",
     title: "Get started with RapidSupportHub",
     category: "Getting started",

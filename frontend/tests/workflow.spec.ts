@@ -775,18 +775,16 @@ test("searchable help, contextual guides and mobile customer topics", async ({
     .fill("Changed-local-e2e-456!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Help center", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("20 guides");
+  await expect(page.getByRole("status")).toContainText("21 guides");
   await page.getByLabel("Search help").fill("reproduction");
   await page
     .getByRole("button", { name: /Log and resolve internal bugs/ })
     .click();
   await expect(
-    page
-      .locator("article")
-      .getByRole("heading", {
-        name: "Log and resolve internal bugs",
-        exact: true,
-      }),
+    page.locator("article").getByRole("heading", {
+      name: "Log and resolve internal bugs",
+      exact: true,
+    }),
   ).toBeVisible();
   await page.getByLabel("Search help").fill("zzzzmissingtopic");
   await expect(
@@ -801,11 +799,9 @@ test("searchable help, contextual guides and mobile customer topics", async ({
     .getByRole("button", { name: "Help with Single sign-on", exact: true })
     .click();
   await expect(
-    page
-      .getByRole("dialog")
-      .getByRole("heading", {
-        name: "Configure Microsoft Entra single sign-on",
-      }),
+    page.getByRole("dialog").getByRole("heading", {
+      name: "Configure Microsoft Entra single sign-on",
+    }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -859,4 +855,47 @@ test("customer help excludes staff and administration guides", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Close help" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("administrator audit filtering, event details, export and mobile layout", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Username", { exact: true }).fill("SupportAdmin");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("Changed-local-e2e-456!");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Audit center", exact: true }).click();
+  await page.getByLabel("Exact action").fill("tickets.created");
+  await page
+    .getByRole("button", { name: "Apply filters", exact: true })
+    .click();
+  await expect(page.locator(".audit-event").first()).toContainText(
+    "tickets.created",
+  );
+  await page.locator(".audit-event").first().click();
+  await expect(
+    page.getByRole("heading", { name: "Recorded details" }),
+  ).toBeVisible();
+  await expect(page.locator(".audit-detail pre")).toContainText("changes");
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export filtered CSV" }).click();
+  expect((await downloading).suggestedFilename()).toBe("audit-events.csv");
+  await page.getByRole("button", { name: "Show correlated events" }).click();
+  await expect(page.getByLabel("Request ID")).not.toHaveValue("");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "test-results/audit-mobile.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Help for this page" }).click();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", {
+        name: "Investigate activity in the audit center",
+      }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
 });

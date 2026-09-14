@@ -64,6 +64,9 @@ def identity(
     user = db.get(User, credential.user_id)
     if not user or not user.active:
         raise HTTPException(401, "Account unavailable")
+    from .auditing import actor
+
+    actor(user, credential)
     if not bearer and request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
         allowed = {
