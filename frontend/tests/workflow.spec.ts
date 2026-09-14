@@ -899,3 +899,40 @@ test("administrator audit filtering, event details, export and mobile layout", a
   ).toBeVisible();
   await page.keyboard.press("Escape");
 });
+
+test("overview cards navigate to their ticket sections", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Username", { exact: true }).fill("SupportAdmin");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("Changed-local-e2e-456!");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+  await page
+    .getByRole("button", { name: /Open tickets & issues:.*Open the support/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Support tickets", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Filter by status")).toHaveValue("");
+
+  for (const [card, status] of [
+    [/In progress:.*Show in-progress/, "in_progress"],
+    [/Awaiting approval:.*Show support tickets awaiting/, "pending_approval"],
+    [/Closed:.*Show closed support/, "closed"],
+  ] as const) {
+    await page.getByRole("button", { name: "Overview", exact: true }).click();
+    await page.getByRole("button", { name: card }).click();
+    await expect(
+      page.getByRole("heading", { name: "Support tickets", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Filter by status")).toHaveValue(status);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("button", { name: "Overview", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /Awaiting approval:.*Show support/ }),
+  ).toBeVisible();
+});

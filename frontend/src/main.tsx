@@ -477,6 +477,10 @@ function App() {
     setOffset(0);
     setFilters({});
   }
+  function navigateWithStatus(p: string, nextStatus: string) {
+    navigate(p);
+    setStatus(nextStatus);
+  }
   return (
     <div className="shell">
       {menuOpen && (
@@ -695,24 +699,34 @@ function App() {
                     value={openCount}
                     icon={<Inbox />}
                     note="Across your accessible workspace"
+                    destination="Open the support ticket workspace"
+                    onClick={() => navigate("tickets")}
                   />
                   <Stat
                     title="In progress"
                     value={counts.in_progress || 0}
                     icon={<Activity />}
                     note="Moving toward a resolution"
+                    destination="Show in-progress support tickets"
+                    onClick={() => navigateWithStatus("tickets", "in_progress")}
                   />
                   <Stat
                     title="Awaiting approval"
                     value={counts.pending_approval || 0}
                     icon={<ShieldCheck />}
                     note="Ready for the customer’s review"
+                    destination="Show support tickets awaiting approval"
+                    onClick={() =>
+                      navigateWithStatus("tickets", "pending_approval")
+                    }
                   />
                   <Stat
                     title="Closed"
                     value={counts.closed || 0}
                     icon={<Check />}
                     note="Resolutions delivered"
+                    destination="Show closed support tickets"
+                    onClick={() => navigateWithStatus("tickets", "closed")}
                   />
                 </div>
               )}
@@ -1138,21 +1152,33 @@ function Stat({
   value,
   icon,
   note,
+  destination,
+  onClick,
 }: {
   title: string;
   value: number;
   icon: React.ReactNode;
   note: string;
+  destination: string;
+  onClick: () => void;
 }) {
   return (
-    <div className="stat">
+    <button
+      type="button"
+      className="stat stat-link"
+      aria-label={`${title}: ${value}. ${destination}`}
+      onClick={onClick}
+    >
       <div>
         {title}
         <span>{icon}</span>
       </div>
       <strong>{value.toString().padStart(2, "0")}</strong>
-      <small>{note}</small>
-    </div>
+      <small>
+        {note}
+        <span className="stat-destination">{destination} →</span>
+      </small>
+    </button>
   );
 }
 function Badge({ status }: { status: string }) {
