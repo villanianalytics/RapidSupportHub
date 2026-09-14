@@ -5,7 +5,7 @@ A lightweight, self-hosted support portal and internal issue tracker, built with
 ## Initial release
 
 - Customer portal with own-ticket and company-wide access roles that combine additively.
-- Staff ticket queue and Kanban board, with assignment, severity, incident type, and product/project organization.
+- Staff ticket queue and Kanban board, with configurable issue categories, support groups, assignment rules, severity, and product/project organization.
 - Internal bugs, reproduction steps, affected versions, resolutions, private notes, and private attachments.
 - Customer tickets linked to internal bugs without exposing internal records to clients.
 - Proposed resolutions, customer approval/rejection, reopening, and an audit trail.
@@ -14,7 +14,7 @@ A lightweight, self-hosted support portal and internal issue tracker, built with
 - Dedicated automation accounts with expiring, scoped, revocable REST API keys.
 - Responsive interface, secure session cookies, Argon2 password hashing, first-login password changes, and upload authorization.
 
-In-app notifications are enabled. Email ingestion and delivery remain deferred; conversations happen through the portal.
+In-app and outbound email notifications are enabled. Inbound email ingestion remains deferred; tickets can be created through the portal and REST API.
 
 ## Daily operations (v0.2)
 
@@ -23,7 +23,7 @@ The portal adapts to phones and tablets: labeled mobile navigation, ticket and a
 Microsoft Entra ID / Azure AD single sign-on is available in **Settings → Single sign-on** as of v0.3. See [SSO setup](docs/SSO.md) for app registration, explicit user mappings, and secret management. Local password login remains available.
 
 - **My account** lets users change their password. Administrators can reset another human user's password or require a change under **Settings → People & permissions → Password options**. Both administrator actions revoke existing sessions and API credentials. Temporary passwords must be replaced at login.
-- **Notifications** shows assignments, replies, private notes (staff only), and status/approval activity. Creators, current assignees, and ticket watchers receive relevant events, excluding their own actions. Notifications are rechecked against current permissions; watching never grants access. Staff can add colleagues as watchers from ticket details. Inboxes refresh every 30 seconds.
+- **Notifications** shows assignments, replies, private notes (staff only), and status/approval activity. Outbound email uses a durable retry queue and rechecks access before sending. Creators, current assignees, and ticket watchers receive relevant events, excluding their own actions.
 - **Attention needed** ranks active tickets with breached SLAs, approaching SLAs (80% elapsed), unanswered customer conversations, or no assignee. Pending-approval and closed tickets are excluded. Categories can overlap; filters and counts respect ticket access.
 - Ticket lists support personal saved views, severity/product/client/tag filters, and a Watching filter. Saved views retain search, status, assignment, filters, and list/board layout.
 - Staff can manage tags and same-kind duplicate links in ticket details. Links preserve both records and SLA history, and cannot form cycles. Tags and duplicate links are internal.
@@ -68,8 +68,10 @@ Open http://localhost:5173. The Vite proxy forwards `/api` to FastAPI. Keep `APP
 3. Under **People & permissions**, create staff and customer users. Customers must belong to a company; deliver temporary credentials through your normal secure channel.
 4. Give customers **Own tickets**, **Company tickets**, or both. Staff roles see all support records and internal issues in this single-team installation.
 5. Optionally configure each client's SLA policy before creating their tickets.
-6. Grant **Manage custom reports** to users who should create and share reports. Others may run shared reports against their own authorized data.
-7. For integrations, create an automation user and issue a key under **API access**.
+6. Under **Categories & assignment**, create issue categories and support groups, then choose manual, fixed-agent, round-robin, or lowest-open-volume routing for each category.
+7. Give the **Ticket assigner** permission to staff who may manually assign work.
+8. Grant **Manage custom reports** to users who should create and share reports. Others may run shared reports against their own authorized data.
+9. For integrations, create an automation user and issue a key under **API access**.
 
 ## REST API
 
@@ -94,7 +96,7 @@ Example ticket creation payload:
   "company_id": 1,
   "product_id": 1,
   "severity": "sev2",
-  "incident_type": "bug"
+  "category_id": 3
 }
 ```
 
@@ -142,7 +144,7 @@ See [deployment instructions](docs/DEPLOYMENT.md) for Ubuntu, PostgreSQL, system
 - Accounts are administrator-created. Self-registration and self-service password recovery are not implemented. Entra SSO supports tenant-managed MFA; local-password MFA is not implemented.
 - Reports cover ticket records and the four SLA measurements, not arbitrary SQL, custom database joins, or a general-purpose BI engine. SLA attention is visible in the queue; automated escalation and email delivery are future work.
 - Reports run synchronously; this release is intended for a small support team. Large installations will need query optimization and background exports.
-- v0.2 adds five tables without changing existing tables. Back up before deploying; startup creates the new tables. Future changes to existing columns require versioned migrations because `create_all` does not upgrade them.
+- Startup creates new routing tables and performs the compatible profile/category column upgrade after a backup. Larger future schema changes should use versioned migrations.
 - Attachments are authorized downloads with a 10 MB limit, not inline previews. Malware scanning and per-client storage quotas are not included.
 - Backups are stored on the same server by default. Configure off-server replication to protect against server loss.
 
@@ -156,8 +158,8 @@ A new `audit_events` table is created on startup and existing business audit ent
 
 Passwords, hashes, tokens, SSO secrets and raw HTTP bodies/query strings are excluded. Message/description/reproduction/resolution changes retain character counts rather than text. Historical records cannot supply metadata that was not originally captured. Health checks, static assets, browser-only interactions, direct SQL changes and operating-system activity are outside this application-level audit trail. Trusted proxy settings must remain restricted to the local reverse proxy for meaningful client IP attribution.
 
-## Amazon SES SMTP readiness
+## Amazon SES outbound notifications
 
 Administrators can store an Amazon SES SMTP connection under **Settings → Email delivery**. The application derives the regional `email-smtp.<region>.amazonaws.com` endpoint, supports STARTTLS on port 587 and TLS on port 465, encrypts the SMTP password at rest, and never returns it to the browser. Saving and testing the configuration produces redacted audit events.
 
-The connection test authenticates without sending a message. This release does not send ticket email or ingest tickets from email; the configuration prepares those capabilities for the next phase. SES identities, sandbox/production access, suppression handling, delivery events, bounce/complaint processing, and notification rules must still be configured when outbound delivery is implemented.
+The connection test authenticates without sending a message. When enabled, ticket and issue creation, updates, assignment, replies, attachments, status, approval, and watcher events queue permission-aware email. Administrators can monitor and retry deliveries. Inbound ticket creation, SES bounce/complaint ingestion, and suppression-list management remain future work.

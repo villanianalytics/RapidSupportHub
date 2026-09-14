@@ -858,15 +858,15 @@ def test_notification_email_queue_delivery_and_permission_recheck(setup, monkeyp
                 select(EmailDelivery).where(EmailDelivery.ticket_id == created["id"])
             )
         )
-        assert {item.user_id for item in queued} == {users["alice_id"], users["dev_id"]}
+        assert {item.user_id for item in queued} == {users["alice_id"]}
         assert all(item.kind == "ticket_created" for item in queued)
 
     sent = []
     monkeypatch.setattr(mail, "_send", lambda config, message: sent.append(message))
-    assert mail.deliver_pending() == 2
-    assert {message["To"] for message in sent} == {"alice@example.com", "dev@example.com"}
+    assert mail.deliver_pending() == 1
+    assert {message["To"] for message in sent} == {"alice@example.com"}
     status = client.get("/api/admin/email/deliveries").json()
-    assert status["counts"]["sent"] == 2
+    assert status["counts"]["sent"] == 1
 
     assert (
         client.patch(
@@ -884,3 +884,93 @@ def test_notification_email_queue_delivery_and_permission_recheck(setup, monkeyp
     assert mail.deliver_pending() == 1
     assert sent == []
     assert client.get("/api/admin/email/deliveries").json()["counts"]["suppressed"] == 1
+
+
+def test_profiles_categories_and_assignment_rules(setup):
+    from app.models import IssueCategory, SupportGroup
+
+    client, company, _, product, users = setup
+    dev = next(item for item in client.get("/api/admin/users").json() if item["id"] == users["dev_id"])
+    updated = client.patch(
+        f"/api/admin/users/{users['dev_id']}",
+        json={
+            "name": "Daniel Developer",
+            "email": "daniel@example.com",
+            "phone": "+1 555 010 0200",
+            "roles": ["developer", "assigner"],
+            "company_id": None,
+            "manage_reports": dev["manage_reports"],
+            "active": True,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["phone"] == "+1 555 010 0200"
+    with SessionLocal() as db:
+        raw, _ = issue(db, db.get(User, users["dev_id"]))
+        db.commit()
+        users["dev"] = {"Authorization": "Bearer " + raw}
+
+    category_result = client.post(
+        "/api/admin/routing/categories",
+        json={
+            "name": "Data import enhancement",
+            "kind": "both",
+            "incident_type": "enhancement",
+            "active": True,
+        },
+    )
+    category = next(
+        item for item in category_result.json()["categories"] if item["name"] == "Data import enhancement"
+    )
+    with SessionLocal() as db:
+        assert db.get(IssueCategory, category["id"])
+
+    group_result = client.post(
+        "/api/admin/routing/groups", json={"name": "Data team", "description": ""}
+    )
+    group = next(item for item in group_result.json()["groups"] if item["name"] == "Data team")
+    assert (
+        client.put(
+            f"/api/admin/routing/groups/{group['id']}/members",
+            json={"user_ids": [users["dev_id"]]},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            "/api/admin/routing/rules",
+            json={
+                "category_id": category["id"],
+                "strategy": "round_robin",
+                "group_id": group["id"],
+                "assignee_id": None,
+            },
+        ).status_code
+        == 200
+    )
+    created = ticket(
+        client,
+        company,
+        product,
+        category_id=category["id"],
+        incident_type="question",
+    )
+    assert created["category"] == "Data import enhancement"
+    assert created["incident_type"] == "enhancement"
+    assert created["assignee_id"] == users["dev_id"]
+    assert created["submitter"]["email"] == ""
+
+    assigner_update = client.patch(
+        f"/api/tickets/{created['id']}",
+        headers=users["dev"],
+        json={"version": created["version"], "assignee_id": None},
+    )
+    assert assigner_update.status_code == 200
+    agent_attempt = client.patch(
+        f"/api/tickets/{created['id']}",
+        headers=users["bot"],
+        json={"version": assigner_update.json()["version"], "assignee_id": users["dev_id"]},
+    )
+    assert agent_attempt.status_code == 403
+    with SessionLocal() as db:
+        assert db.get(SupportGroup, group["id"])

@@ -4,6 +4,7 @@ export type User = {
   username: string;
   name: string;
   email: string;
+  phone: string;
   roles: string[];
   company_id: number | null;
   manage_reports: boolean;
@@ -15,6 +16,7 @@ export type Catalog = {
   products: { id: number; name: string; description: string }[];
   companies: { id: number; name: string }[];
   agents: { id: number; name: string }[];
+  categories: { id: number; name: string; kind: string; incident_type: string }[];
 };
 export type SLACycle = {
   id: number;
@@ -37,6 +39,8 @@ export type Ticket = {
   description: string;
   kind: string;
   incident_type: string;
+  category_id: number | null;
+  category: string;
   severity: string;
   status: string;
   company_id: number | null;
@@ -48,6 +52,7 @@ export type Ticket = {
   updated_at: string;
   version: number;
   creator: string;
+  submitter?: { id: number; name: string; email: string; phone: string };
   assignee: string;
   product: string;
   company: string;
@@ -142,6 +147,9 @@ export const label = (s: string) =>
     sev4: "Sev 4 · Low",
     customer_own: "Own tickets",
     customer_company: "Company tickets",
+    assigner: "Ticket assigner",
+    request: "Enhancement",
+    enhancement: "Enhancement",
     first_response: "First human response",
     reply: "Customer reply",
     update: "Progress update",

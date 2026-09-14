@@ -323,6 +323,7 @@ function App() {
       products: [],
       companies: [],
       agents: [],
+      categories: [],
     }),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [counts, setCounts] = useState<Record<string, number>>({}),
@@ -464,7 +465,7 @@ function App() {
             setSelected(null);
             setTickets([]);
             setCounts({});
-            setCatalog({ products: [], companies: [], agents: [] });
+            setCatalog({ products: [], companies: [], agents: [], categories: [] });
             setFilters({});
             setSearch("");
             setStatus("");
@@ -1034,7 +1035,7 @@ function App() {
                               )}
                               <small>
                                 #{String(t.id).padStart(4, "0")} <span>·</span>{" "}
-                                {label(t.incident_type)} <span>·</span>{" "}
+                                {t.category} <span>·</span>{" "}
                                 {date(t.created_at)}
                               </small>
                             </td>
@@ -1297,22 +1298,24 @@ function CreateTicket({
           setError("");
           const f = new FormData(e.currentTarget);
           try {
-            onCreated(
-              await api("/tickets", "POST", {
+            let created = await api<Ticket>("/tickets", "POST", {
                 title: f.get("title"),
                 description: f.get("description"),
                 kind,
                 product_id: Number(f.get("product")),
                 company_id: f.get("company") ? Number(f.get("company")) : null,
                 severity: f.get("severity"),
-                incident_type: kind === "bug" ? "bug" : f.get("type"),
-                assignee_id: f.get("assignee")
-                  ? Number(f.get("assignee"))
-                  : null,
+                category_id: Number(f.get("category")),
                 reproduction: f.get("reproduction") || "",
                 affected_version: f.get("version") || "",
-              }),
-            );
+              });
+            const files = f.getAll("attachments").filter((file): file is File => file instanceof File && file.size > 0);
+            for (const file of files) {
+              const upload = new FormData(); upload.append("file", file);
+              await api(`/tickets/${created.id}/attachments`, "POST", upload);
+            }
+            if (files.length) created = await api(`/tickets/${created.id}`);
+            onCreated(created);
           } catch (e) {
             setError((e as Error).message);
           } finally {
@@ -1374,16 +1377,11 @@ function CreateTicket({
               ))}
             </select>
           </Field>
-          <Field label="Incident type">
-            <select
-              name="type"
-              defaultValue={kind === "bug" ? "bug" : "question"}
-              disabled={kind === "bug"}
-            >
-              {["question", "bug", "outage", "request"].map((v) => (
-                <option key={v} value={v}>
-                  {label(v)}
-                </option>
+          <Field label="Issue category">
+            <select name="category" defaultValue="" required>
+              <option value="" disabled>Select a category</option>
+              {catalog.categories.filter((c)=>c.kind===kind||c.kind==="both").map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </Field>
@@ -1405,18 +1403,7 @@ function CreateTicket({
             />
           </Field>
         )}
-        {staff && (
-          <Field label="Assigned to">
-            <select name="assignee">
-              <option value="">Unassigned</option>
-              {catalog.agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
+        <Field label="Attachments (optional)"><input name="attachments" type="file" multiple /></Field>
         {error && <div className="error">{error}</div>}
         <div className="modal-actions">
           <button type="button" className="secondary" onClick={onClose}>
@@ -1497,6 +1484,7 @@ function TicketDetail({
             {t.company} <span>·</span> {t.product} <span>·</span> Opened{" "}
             {date(t.created_at)} by {t.creator}
           </p>
+          {t.submitter && <p className="muted">Submitter: {t.submitter.name} · {t.submitter.email || "No email"} · {t.submitter.phone || "No phone"}</p>}
         </div>
         <Badge status={t.status} />
       </div>
@@ -1695,7 +1683,7 @@ function TicketDetail({
             <h2>Ticket details</h2>
             {staff ? (
               <>
-                <Field label="Assigned to">
+                {(user.roles.includes("admin") || user.roles.includes("assigner")) ? <Field label="Assigned to">
                   <select
                     value={t.assignee_id || ""}
                     disabled={busy}
@@ -1714,7 +1702,7 @@ function TicketDetail({
                       </option>
                     ))}
                   </select>
-                </Field>
+                </Field> : <p><strong>Assigned to:</strong> {t.assignee}</p>}
                 <Field label="Severity">
                   <select
                     value={t.severity}
@@ -1728,17 +1716,14 @@ function TicketDetail({
                     ))}
                   </select>
                 </Field>
-                <Field label="Incident type">
+                <Field label="Issue category">
                   <select
-                    value={t.incident_type}
-                    disabled={busy || t.kind === "bug"}
-                    onChange={(e) => patch({ incident_type: e.target.value })}
+                    value={t.category_id || ""}
+                    disabled={busy}
+                    onChange={(e) => patch({ category_id: Number(e.target.value) })}
                   >
-                    {["question", "bug", "outage", "request"].map((s) => (
-                      <option key={s} value={s}>
-                        {label(s)}
-                      </option>
-                    ))}
+                    {!t.category_id && <option value="">{label(t.incident_type)}</option>}
+                    {catalog.categories.filter((c)=>c.kind===t.kind||c.kind==="both").map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </Field>
                 <Field label="Move to status">

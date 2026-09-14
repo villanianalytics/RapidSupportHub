@@ -4,11 +4,13 @@ import { api, Catalog, date, label, User } from "./api";
 import { Field, Modal } from "./main";
 import { SSOSettings } from "./sso";
 import { EmailSettings } from "./mail";
+import { RoutingSettings } from "./routing";
 
 const roleOptions = [
   "admin",
   "agent",
   "developer",
+  "assigner",
   "customer_own",
   "customer_company",
 ];
@@ -113,6 +115,7 @@ export function Admin({
     ["workspace", "Workspace"],
     ["users", "People & permissions"],
     ["sla", "SLA policies"],
+    ["routing", "Categories & assignment"],
     ["api", "API access"],
     ["sso", "Single sign-on"],
     ["email", "Email delivery"],
@@ -178,6 +181,7 @@ export function Admin({
               workspace: "workspace",
               users: "users",
               sla: "sla-config",
+              routing: "workspace",
               api: "api",
               sso: "sso",
               email: "email",
@@ -200,6 +204,7 @@ export function Admin({
       )}
       {tab === "sso" && <SSOSettings users={users} />}
       {tab === "email" && <EmailSettings />}
+      {tab === "routing" && <RoutingSettings catalog={catalog} refresh={refresh} />}
       {tab === "workspace" && (
         <div className="settings-grid">
           {(["products", "companies"] as const).map((entity) => (
@@ -301,7 +306,7 @@ export function Admin({
                       <td>
                         <strong>{u.name}</strong>
                         <small>
-                          {u.username} {u.automation ? "· Automation" : ""}
+                          {u.username} {u.email ? `· ${u.email}` : ""} {u.phone ? `· ${u.phone}` : ""} {u.automation ? "· Automation" : ""}
                         </small>
                       </td>
                       <td>
@@ -323,7 +328,6 @@ export function Admin({
                       <td>
                         <button
                           className="text-button"
-                          disabled={u.id === user.id}
                           onClick={() => setEditUser(structuredClone(u))}
                         >
                           Edit access
@@ -417,6 +421,11 @@ export function Admin({
                 roles={editUser.roles}
                 onChange={(roles) => setEditUser({ ...editUser, roles })}
               />
+              <div className="form-grid">
+                <Field label="Full name"><input value={editUser.name} onChange={(e)=>setEditUser({...editUser,name:e.target.value})}/></Field>
+                <Field label="Email"><input type="email" value={editUser.email} onChange={(e)=>setEditUser({...editUser,email:e.target.value})}/></Field>
+                <Field label="Phone number"><input type="tel" value={editUser.phone||""} onChange={(e)=>setEditUser({...editUser,phone:e.target.value})}/></Field>
+              </div>
               <Field label="Client company">
                 <select
                   value={editUser.company_id || ""}
@@ -468,6 +477,9 @@ export function Admin({
                     execute(async () => {
                       await api(`/admin/users/${editUser.id}`, "PATCH", {
                         roles: editUser.roles,
+                        name: editUser.name,
+                        email: editUser.email,
+                        phone: editUser.phone,
                         company_id: editUser.company_id,
                         manage_reports: editUser.manage_reports,
                         active: editUser.active,
@@ -500,6 +512,7 @@ export function Admin({
                     username: f.get("username"),
                     name: f.get("name"),
                     email: f.get("email"),
+                    phone: f.get("phone"),
                     password: f.get("password"),
                     roles: newRoles,
                     company_id: f.get("company")
@@ -523,6 +536,7 @@ export function Admin({
                 <Field label="Email">
                   <input name="email" type="email" />
                 </Field>
+                <Field label="Phone number"><input name="phone" type="tel" /></Field>
                 <Field label="Temporary password (12+ characters)">
                   <input
                     name="password"
@@ -714,7 +728,7 @@ export function Admin({
                 <thead>
                   <tr>
                     <th>Severity</th>
-                    <th>Incident type</th>
+                    <th>SLA classification</th>
                     <th>First response</th>
                     <th>Resolution</th>
                     <th>Reply (optional)</th>
@@ -750,7 +764,7 @@ export function Admin({
                       </td>
                       <td>
                         <select
-                          aria-label={`Incident type ${i + 1}`}
+                          aria-label={`SLA classification ${i + 1}`}
                           value={t.incident_type}
                           onChange={(e) =>
                             setConfig({
@@ -764,7 +778,7 @@ export function Admin({
                             })
                           }
                         >
-                          {["*", "outage", "bug", "question", "request"].map(
+                          {["*", "outage", "bug", "question", "enhancement"].map(
                             (s) => (
                               <option key={s} value={s}>
                                 {s === "*" ? "All types" : label(s)}

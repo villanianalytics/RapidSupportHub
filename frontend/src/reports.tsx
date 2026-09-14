@@ -300,7 +300,7 @@ export function Reports({ user, catalog }: { user: User; catalog: Catalog }) {
                     onChange={(e) => filter("incident_type", e.target.value)}
                   >
                     <option value="">All incident types</option>
-                    {["outage", "bug", "question", "request"].map((s) => (
+                    {["outage", "bug", "question", "enhancement"].map((s) => (
                       <option key={s} value={s}>
                         {label(s)}
                       </option>

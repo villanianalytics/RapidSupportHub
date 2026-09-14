@@ -18,6 +18,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(100), unique=True)
     name: Mapped[str] = mapped_column(String(160))
     email: Mapped[str] = mapped_column(String(254), default="")
+    phone: Mapped[str] = mapped_column(String(40), default="")
     password_hash: Mapped[str] = mapped_column(Text)
     roles: Mapped[list] = mapped_column(JSON, default=list)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"))
@@ -61,6 +62,7 @@ class Ticket(Base):
     description: Mapped[str] = mapped_column(Text)
     kind: Mapped[str] = mapped_column(String(20), default="support")
     incident_type: Mapped[str] = mapped_column(String(30), default="question")
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("issue_categories.id"), index=True)
     severity: Mapped[str] = mapped_column(String(10), default="sev3")
     status: Mapped[str] = mapped_column(String(40), default="new", index=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"), index=True)
@@ -161,6 +163,36 @@ class EmailDelivery(Base):
     last_error: Mapped[str] = mapped_column(String(160), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class IssueCategory(Base):
+    __tablename__ = "issue_categories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    kind: Mapped[str] = mapped_column(String(20), default="both")
+    incident_type: Mapped[str] = mapped_column(String(30), default="question")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SupportGroup(Base):
+    __tablename__ = "support_groups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+
+
+class SupportGroupMember(Base):
+    __tablename__ = "support_group_members"
+    group_id: Mapped[int] = mapped_column(ForeignKey("support_groups.id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+
+
+class AssignmentRule(Base):
+    __tablename__ = "assignment_rules"
+    category_id: Mapped[int] = mapped_column(ForeignKey("issue_categories.id"), primary_key=True)
+    strategy: Mapped[str] = mapped_column(String(30), default="manual")
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("support_groups.id"))
+    assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    last_assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
 
 class TicketTag(Base):

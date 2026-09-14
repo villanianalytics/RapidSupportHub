@@ -13,7 +13,7 @@ from threading import Lock
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -29,6 +29,7 @@ from .models import (
     Audit,
     Company,
     Credential,
+    IssueCategory,
     Message,
     Policy,
     Product,
@@ -39,6 +40,8 @@ from .models import (
     Watcher,
 )
 from .operations import router as operations_router
+from .routing import assign as assign_ticket
+from .routing import router as routing_router
 from .security import (
     admin,
     identity,
@@ -54,6 +57,14 @@ from .security import (
 @asynccontextmanager
 async def lifespan(app):
     Base.metadata.create_all(engine)
+    columns = inspect(engine).get_columns("users")
+    if "phone" not in {column["name"] for column in columns}:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(40) NOT NULL DEFAULT ''"))
+    columns = inspect(engine).get_columns("tickets")
+    if "category_id" not in {column["name"] for column in columns}:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE tickets ADD COLUMN category_id INTEGER"))
     with SessionLocal() as db:
         auditing.initialize(db)
         if not db.scalar(select(User).limit(1)):
@@ -71,6 +82,17 @@ async def lifespan(app):
                     roles=["admin"],
                     manage_reports=True,
                 )
+            )
+            db.commit()
+        if not db.scalar(select(IssueCategory.id).limit(1)):
+            db.add_all(
+                [
+                    IssueCategory(name="Question", kind="support", incident_type="question"),
+                    IssueCategory(name="Service outage", kind="support", incident_type="outage"),
+                    IssueCategory(name="Software problem", kind="both", incident_type="bug"),
+                    IssueCategory(name="Enhancement", kind="both", incident_type="enhancement"),
+                    IssueCategory(name="Internal engineering issue", kind="bug", incident_type="bug"),
+                ]
             )
             db.commit()
     worker = None
@@ -105,6 +127,7 @@ app.include_router(auditing.router)
 app.include_router(operations_router)
 app.include_router(entra_router)
 app.include_router(mail_router)
+app.include_router(routing_router)
 
 
 @app.exception_handler(IntegrityError)
@@ -155,6 +178,7 @@ def user_dict(user):
             "username",
             "name",
             "email",
+            "phone",
             "roles",
             "company_id",
             "manage_reports",
@@ -301,6 +325,19 @@ def catalog(user: User = Depends(identity), db: Session = Depends(get_db)):
         ],
         "companies": [{"id": c.id, "name": c.name} for c in companies],
         "agents": [{"id": u.id, "name": u.name} for u in users if staff(u)],
+        "categories": [
+            {
+                "id": item.id,
+                "name": item.name,
+                "kind": item.kind,
+                "incident_type": item.incident_type,
+            }
+            for item in db.scalars(
+                select(IssueCategory)
+                .where(IssueCategory.active.is_(True))
+                .order_by(IssueCategory.name)
+            )
+        ],
     }
 
 
@@ -317,6 +354,8 @@ def validate_roles(db, roles, company_id):
         r in {"admin", "agent", "developer"} for r in roles
     ):
         raise HTTPException(422, "Use a separate account for customer and staff access")
+    if "assigner" in roles and not any(role in {"admin", "agent", "developer"} for role in roles):
+        raise HTTPException(422, "Assigner permission must accompany a staff role")
 
 
 @app.post("/api/admin/users", status_code=201)
@@ -342,6 +381,7 @@ def create_user(
 def update_user(
     user_id: int,
     data: s.UserUpdate,
+    request: Request,
     user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -352,8 +392,10 @@ def update_user(
         raise HTTPException(422, "You cannot disable or remove your own administrator access")
     validate_roles(db, data.roles, data.company_id)
     for k, v in data.model_dump().items():
-        setattr(record, k, v)
-    db.execute(delete(Credential).where(Credential.user_id == user_id, Credential.id != -1))
+        if k not in {"name", "email", "phone"} or v is not None:
+            setattr(record, k, v)
+    keep = request.state.credential.id if user_id == user.id else -1
+    db.execute(delete(Credential).where(Credential.user_id == user_id, Credential.id != keep))
     audit(
         db,
         user,
@@ -479,14 +521,25 @@ def ticket_dict(db, ticket, user, detail=False):
     ]
     if staff(user):
         fields += ["reproduction", "affected_version", "linked_bug_id"]
+    fields += ["category_id"]
     result = {k: getattr(ticket, k) for k in fields}
     result.update(workspace.organization(db, ticket, user))
-    result["creator"] = db.get(User, ticket.creator_id).name
+    creator = db.get(User, ticket.creator_id)
+    result["creator"] = creator.name
+    if staff(user) or creator.id == user.id:
+        result["submitter"] = {
+            "id": creator.id,
+            "name": creator.name,
+            "email": creator.email,
+            "phone": creator.phone,
+        }
     result["assignee"] = (
         db.get(User, ticket.assignee_id).name if ticket.assignee_id else "Unassigned"
     )
     result["product"] = db.get(Product, ticket.product_id).name
     result["company"] = db.get(Company, ticket.company_id).name if ticket.company_id else "Internal"
+    category = db.get(IssueCategory, ticket.category_id) if ticket.category_id else None
+    result["category"] = category.name if category else ticket.incident_type
     if staff(user):
         result["sla"] = sla.summary(db, ticket)
         result["attention"] = workspace.attention_reasons(db, ticket, result["sla"])
@@ -582,7 +635,6 @@ def create_ticket(
     if not staff(user):
         if (
             data.kind != "support"
-            or data.assignee_id is not None
             or data.reproduction
             or data.affected_version
         ):
@@ -592,7 +644,17 @@ def create_ticket(
     exists(db, Company, values["company_id"], "company")
     if data.kind == "support" and not values["company_id"]:
         raise HTTPException(422, "Support tickets require a client company")
-    validate_assignee(db, data.assignee_id)
+    category = db.get(IssueCategory, data.category_id) if data.category_id else None
+    if not category:
+        category = db.scalar(
+            select(IssueCategory)
+            .where(IssueCategory.active.is_(True), IssueCategory.kind.in_([data.kind, "both"]))
+            .order_by(IssueCategory.id)
+        )
+    if not category or category.kind not in {data.kind, "both"} or not category.active:
+        raise HTTPException(422, "Choose an active issue category")
+    values["category_id"] = category.id
+    values["incident_type"] = "bug" if data.kind == "bug" else category.incident_type
     if data.kind == "bug":
         values["company_id"] = None
         values["incident_type"] = "bug"
@@ -605,6 +667,7 @@ def create_ticket(
     ticket.sla_config = policy.config if policy else None
     db.add(ticket)
     db.flush()
+    ticket.assignee_id = assign_ticket(db, ticket)
     sla.start_cycle(db, ticket, "resolution", ticket.created_at, always=True)
     if ticket.kind == "support":
         sla.start_cycle(db, ticket, "first_response", ticket.created_at, always=True)
@@ -693,7 +756,15 @@ def apply_ticket_update(
         if data.status == "in_progress" and not data.reason.strip():
             raise HTTPException(422, "Explain why the resolution is rejected")
     if "assignee_id" in fields:
+        if not (admin(user) or "assigner" in user.roles):
+            raise HTTPException(403, "Ticket assigner permission required")
         validate_assignee(db, data.assignee_id)
+    if "category_id" in fields:
+        category = db.get(IssueCategory, data.category_id)
+        if not category or not category.active or category.kind not in {ticket.kind, "both"}:
+            raise HTTPException(422, "Choose an active issue category")
+        data.incident_type = "bug" if ticket.kind == "bug" else category.incident_type
+        fields.add("incident_type")
     if "linked_bug_id" in fields and data.linked_bug_id is not None:
         bug = db.get(Ticket, data.linked_bug_id)
         if not bug or bug.kind != "bug" or ticket.kind != "support":

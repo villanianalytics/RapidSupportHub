@@ -62,18 +62,17 @@ test("administrator setup, customer conversation, Kanban and reports", async ({
     .getByLabel("Client company", { exact: true })
     .selectOption({ label: "Acme Analytics" });
   await modal.getByLabel("Severity", { exact: true }).selectOption("sev1");
+  await modal.getByLabel("Issue category").selectOption({ label: "Question" });
   await modal
     .getByLabel("Description", { exact: true })
     .fill("The export times out when the dataset exceeds 100,000 rows.");
-  await modal
-    .getByLabel("Assigned to", { exact: true })
-    .selectOption({ label: "Support Administrator" });
   await modal
     .getByRole("button", { name: "Create ticket", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "CSV export fails for large datasets" }),
   ).toBeVisible();
+  await page.getByLabel("Assigned to").selectOption({ label: "Support Administrator" });
   await page
     .getByLabel("Reply", { exact: true })
     .fill("We are investigating the timeout and will update you shortly.");
@@ -674,6 +673,7 @@ test("phone and tablet navigation, ticket creation, replies and status changes",
   await modal
     .getByLabel("Client company", { exact: true })
     .selectOption({ label: "Acme Analytics" });
+  await modal.getByLabel("Issue category").selectOption({ label: "Question" });
   await modal
     .getByLabel("Description", { exact: true })
     .fill("A complete mobile support conversation.");
@@ -748,6 +748,7 @@ test("customer portal works with touch input", async ({ browser }) => {
     await modal
       .getByLabel("Product / project")
       .selectOption({ label: "RapidCube" });
+    await modal.getByLabel("Issue category").selectOption({ label: "Question" });
     await modal.getByLabel("Description").fill("Sent using the touch portal.");
     await modal
       .getByRole("button", { name: "Create ticket", exact: true })

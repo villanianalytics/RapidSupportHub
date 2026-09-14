@@ -4,9 +4,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, model_validator
 
-Role = Literal["admin", "agent", "developer", "customer_own", "customer_company"]
+Role = Literal["admin", "agent", "developer", "assigner", "customer_own", "customer_company"]
 Severity = Literal["sev1", "sev2", "sev3", "sev4"]
-Incident = Literal["outage", "bug", "question", "request"]
+Incident = Literal["outage", "bug", "question", "enhancement", "request"]
 Status = Literal["new", "started", "in_progress", "waiting_customer", "pending_approval", "closed"]
 
 
@@ -28,6 +28,7 @@ class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9_.@-]+$")
     name: str = Field(min_length=1, max_length=160)
     email: str = Field(default="", max_length=254)
+    phone: str = Field(default="", max_length=40)
     password: str = Field(min_length=12, max_length=256)
     roles: list[Role] = Field(min_length=1)
     company_id: int | None = None
@@ -36,6 +37,9 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    email: str | None = Field(default=None, max_length=254)
+    phone: str | None = Field(default=None, max_length=40)
     roles: list[Role] = Field(min_length=1)
     company_id: int | None = None
     manage_reports: bool = False
@@ -47,9 +51,35 @@ class Named(BaseModel):
     description: str = Field(default="", max_length=2000)
 
 
+class CategoryInput(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    kind: Literal["support", "bug", "both"] = "both"
+    incident_type: Literal["outage", "bug", "question", "enhancement"] = "question"
+    active: bool = True
+
+
+class GroupMembers(BaseModel):
+    user_ids: list[int] = Field(max_length=100)
+
+
+class AssignmentRuleInput(BaseModel):
+    category_id: int
+    strategy: Literal["manual", "fixed", "round_robin", "least_open"]
+    group_id: int | None = None
+    assignee_id: int | None = None
+
+    @model_validator(mode="after")
+    def valid_target(self):
+        if self.strategy == "fixed" and not self.assignee_id:
+            raise ValueError("Fixed assignment requires an agent")
+        if self.strategy in {"round_robin", "least_open"} and not self.group_id:
+            raise ValueError("Group assignment requires a support group")
+        return self
+
+
 class Targets(BaseModel):
     severity: Severity
-    incident_type: Literal["*", "outage", "bug", "question", "request"] = "*"
+    incident_type: Literal["*", "outage", "bug", "question", "enhancement", "request"] = "*"
     first_response: int = Field(gt=0, le=525600)
     resolution: int = Field(gt=0, le=525600)
     reply: int | None = Field(default=None, gt=0, le=525600)
@@ -100,7 +130,7 @@ class TicketCreate(BaseModel):
     severity: Severity = "sev3"
     company_id: int | None = None
     product_id: int
-    assignee_id: int | None = None
+    category_id: int | None = None
     reproduction: str = Field(default="", max_length=20000)
     affected_version: str = Field(default="", max_length=100)
 
@@ -110,6 +140,7 @@ class TicketUpdate(BaseModel):
     status: Status | None = None
     severity: Severity | None = None
     incident_type: Incident | None = None
+    category_id: int | None = None
     assignee_id: int | None = None
     linked_bug_id: int | None = None
     resolution: str | None = Field(default=None, max_length=20000)

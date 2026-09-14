@@ -47,7 +47,11 @@ def notify_unassigned_staff_by_email(db, ticket, actor):
     from .mail import queue_delivery
 
     for recipient in db.scalars(select(User).where(User.active.is_(True))):
-        if recipient.id != actor.id and not recipient.automation and staff(recipient):
+        if (
+            recipient.id != actor.id
+            and not recipient.automation
+            and ("admin" in recipient.roles or "assigner" in recipient.roles)
+        ):
             queue_delivery(db, recipient, ticket, "ticket_created", ticket.kind == "bug")
 
 

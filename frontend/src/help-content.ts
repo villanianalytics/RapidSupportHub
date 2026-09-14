@@ -129,7 +129,7 @@ export const guides: Guide[] = [
       {
         title: "Start here",
         steps: [
-          "Create a support ticket for a question, request, outage, or software problem.",
+          "Create a support ticket for a question, enhancement, outage, or software problem.",
           "Check Notifications for replies and updates on tickets you follow.",
           "Use My account to manage your local password, or follow your organization’s Microsoft sign-in process.",
         ],
@@ -144,13 +144,13 @@ export const guides: Guide[] = [
     category: "Tickets & conversations",
     summary: "Give your support team the information they need to investigate.",
     keywords:
-      "new incident request question outage severity product attach screenshot",
+      "new incident enhancement question outage severity category product attach screenshot",
     sections: [
       {
-        title: "Submit a request",
+        title: "Submit a ticket",
         steps: [
           "Open My support or Support tickets and select New ticket.",
-          "Enter a specific title and choose the affected product/project. Staff select the client company; customer requests use the customer’s assigned company.",
+          "Enter a specific title, choose the affected product/project and select an issue category. Staff select the client company; customer tickets use the customer’s assigned company. Assignment is determined after submission by the category rule.",
           "Choose the severity and incident type, then describe what happened and what you expected. Include any error message, steps to reproduce, and when the problem started.",
           "Select Create ticket. The ticket opens so you can add a reply or upload supporting files.",
         ],
@@ -158,7 +158,7 @@ export const guides: Guide[] = [
       {
         title: "Severity and incident type",
         text: [
-          "Sev 1 is Critical, Sev 2 is High, Sev 3 is Normal, and Sev 4 is Low. Choose the level that reflects the impact. Incident types are Outage, Bug, Question, and Request. Your client’s SLA policy can define different targets for these classifications.",
+          "Sev 1 is Critical, Sev 2 is High, Sev 3 is Normal, and Sev 4 is Low. Choose the level that reflects the impact. Categories map to Outage, Bug, Question, or Enhancement for SLA reporting. Your client’s SLA policy can define different targets for these classifications.",
         ],
       },
       {
@@ -418,7 +418,7 @@ export const guides: Guide[] = [
         title: "Pick up and work a ticket",
         steps: [
           "Open Support tickets. Use Assigned to me or the available filters to find work.",
-          "Open a ticket and set Assigned to, Severity, or Incident type in Ticket details.",
+          "Open a ticket and set Assigned to, Severity, or Issue category in Ticket details. Assignment requires the Ticket assigner permission or Administrator role.",
           "Choose a status under Move to status and select Save status & resolution. Add public replies to keep the customer informed; use Private note for internal discussion.",
         ],
       },
