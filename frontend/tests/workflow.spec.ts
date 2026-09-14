@@ -778,7 +778,7 @@ test("searchable help, contextual guides and mobile customer topics", async ({
     .fill("Changed-local-e2e-456!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Help center", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("21 guides");
+  await expect(page.getByRole("status")).toContainText("22 guides");
   await page.getByLabel("Search help").fill("reproduction");
   await page
     .getByRole("button", { name: /Log and resolve internal bugs/ })
@@ -870,6 +870,20 @@ test("administrator audit filtering, event details, export and mobile layout", a
     .fill("Changed-local-e2e-456!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Configure Amazon SES" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Amazon SES SMTP" }),
+  ).toBeVisible();
+  await page.getByLabel("SES SMTP username").fill("test-ses-user");
+  await page.getByLabel("SES SMTP password").fill("test-ses-password");
+  await page.getByLabel("From email address").fill("support@example.com");
+  await page.getByRole("button", { name: "Save SMTP configuration" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Amazon SES SMTP settings saved",
+  );
+  await expect(
+    page.getByText("email-smtp.us-east-1.amazonaws.com"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Configure Microsoft Entra" }).click();
   await expect(
     page.getByRole("heading", { name: "Microsoft Entra ID" }),

@@ -22,6 +22,7 @@ from . import auditing, sla, workspace
 from . import schemas as s
 from .db import Base, SessionLocal, engine, get_db, now
 from .entra import router as entra_router
+from .mail import router as mail_router
 from .models import (
     Attachment,
     Audit,
@@ -93,6 +94,7 @@ app.middleware("http")(auditing.middleware)
 app.include_router(auditing.router)
 app.include_router(operations_router)
 app.include_router(entra_router)
+app.include_router(mail_router)
 
 
 @app.exception_handler(IntegrityError)

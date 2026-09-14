@@ -773,3 +773,53 @@ def test_comprehensive_audit(setup):
     ).json()
     assert stable["total"] == frozen["total"] and stable["items"] == frozen["items"]
     assert json.loads(json.dumps(records))
+
+
+def test_amazon_ses_smtp_configuration(setup, monkeypatch):
+    from app import mail
+    from app.models import AuditEvent, SMTPConfiguration
+    from cryptography.fernet import Fernet
+
+    client, _, _, _, users = setup
+    monkeypatch.setenv("SSO_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    for who in ("alice", "dev", "bot"):
+        assert client.get("/api/admin/email", headers=users[who]).status_code == 403
+        assert client.put("/api/admin/email", json={}, headers=users[who]).status_code == 403
+        assert client.post("/api/admin/email/test", headers=users[who]).status_code == 403
+
+    payload = {
+        "region": "us-east-1",
+        "port": 587,
+        "username": "AKIA-SES-SMTP-TEST",
+        "password": "smtp-secret-that-must-never-leak",
+        "from_email": "support@example.com",
+        "from_name": "RapidSupportHub",
+        "reply_to": "replies@example.com",
+        "enabled": True,
+    }
+    assert client.put("/api/admin/email", json={**payload, "port": 25}).status_code == 422
+    saved = client.put("/api/admin/email", json=payload)
+    assert saved.status_code == 200
+    assert "password" not in saved.json()
+    assert saved.json()["endpoint"] == "email-smtp.us-east-1.amazonaws.com"
+    assert mail.endpoint("cn-north-1") == "email-smtp.cn-north-1.amazonaws.com.cn"
+    with SessionLocal() as db:
+        record = db.get(SMTPConfiguration, 1)
+        assert record.password_encrypted != payload["password"]
+        events = list(db.scalars(select(AuditEvent)))
+        assert payload["password"] not in str([event.details for event in events])
+        changes = next(event for event in events if event.action == "smtp_configuration.created")
+        assert changes.details["changes"]["password_encrypted"]["after"] == "[REDACTED]"
+
+    checked = []
+    monkeypatch.setattr(mail, "verify_connection", lambda record: checked.append(record.region))
+    tested = client.post("/api/admin/email/test")
+    assert tested.status_code == 200 and checked == ["us-east-1"]
+    config = client.get("/api/admin/email").json()["configuration"]
+    assert config["last_test_ok"] is True and config["has_password"] is True
+
+    updated = client.put("/api/admin/email", json={**payload, "password": None, "enabled": False})
+    assert updated.status_code == 200 and updated.json()["last_test_ok"] is None
+    monkeypatch.setattr(mail, "verify_connection", lambda record: (_ for _ in ()).throw(OSError()))
+    assert client.post("/api/admin/email/test").status_code == 422
+    assert client.get("/api/admin/email").json()["configuration"]["last_test_ok"] is False

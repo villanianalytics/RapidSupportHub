@@ -1786,6 +1786,39 @@ td small span {
   margin: 6px 0;
   overflow-wrap: anywhere;
 }
+.email-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.configuration-summary {
+  margin: 0 0 20px;
+}
+.configuration-summary > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.configuration-summary dt {
+  color: var(--muted);
+}
+.configuration-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.email-test-state {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+}
+.email-security-note {
+  margin-top: 20px;
+}
 .account-panel {
   max-width: 620px;
 }

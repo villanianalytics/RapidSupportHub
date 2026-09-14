@@ -20,7 +20,16 @@ from .security import require_admin
 
 context = ContextVar("audit_context", default=None)
 router = APIRouter(prefix="/api/admin/audit", tags=["Audit"])
-SECRET = {"password_hash", "digest", "secret", "browser_digest", "nonce", "verifier", "storage_key"}
+SECRET = {
+    "password_hash",
+    "password_encrypted",
+    "digest",
+    "secret",
+    "browser_digest",
+    "nonce",
+    "verifier",
+    "storage_key",
+}
 CONTENT = {"body", "description", "reproduction", "resolution"}
 
 

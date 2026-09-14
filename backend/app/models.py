@@ -195,6 +195,22 @@ class EntraFlow(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class SMTPConfiguration(Base):
+    __tablename__ = "smtp_configuration"
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    region: Mapped[str] = mapped_column(String(30))
+    port: Mapped[int] = mapped_column(Integer, default=587)
+    username: Mapped[str] = mapped_column(String(255))
+    password_encrypted: Mapped[str] = mapped_column(Text)
+    from_email: Mapped[str] = mapped_column(String(254))
+    from_name: Mapped[str] = mapped_column(String(160), default="RapidSupportHub")
+    reply_to: Mapped[str] = mapped_column(String(254), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_tested_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_test_ok: Mapped[bool | None] = mapped_column(Boolean)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -16,6 +16,51 @@ export type Guide = {
 
 export const guides: Guide[] = [
   {
+    id: "email",
+    title: "Connect Amazon SES for outbound email",
+    category: "Administration",
+    audience: "admin",
+    summary:
+      "Securely store SES SMTP credentials and test the connection for the outbound-email phase.",
+    keywords:
+      "amazon aws ses smtp email mail outbound region sandbox credentials tls starttls",
+    sections: [
+      {
+        title: "Prepare Amazon SES",
+        steps: [
+          "In the Amazon SES console, select the AWS region where you will send email and verify the From identity. Verify the Reply-to identity too if you use one.",
+          "Create SES SMTP credentials in that same region. SMTP credentials are different from ordinary AWS access keys.",
+          "If the SES account is in the sandbox, request production access before sending to unverified recipients.",
+        ],
+      },
+      {
+        title: "Save the connection",
+        steps: [
+          "Open Settings and choose Email delivery, or select Configure Amazon SES from the administrator tools.",
+          "Enter the AWS region, SMTP username and password, sender name, verified From address, and optional Reply-to address.",
+          "Use port 587 for STARTTLS or 465 for TLS. The SES endpoint is derived from the region and cannot be replaced with an arbitrary host.",
+          "Save the settings. When editing later, leave the password empty to keep the encrypted value already stored.",
+        ],
+      },
+      {
+        title: "Test safely",
+        text: [
+          "Select Test SMTP connection to open a secure connection and authenticate. The test does not send an email. A successful result confirms the endpoint and credentials, but SES identity, sandbox, suppression, and sending-policy problems can still affect future delivery.",
+          "Every save clears the previous test result. Test again after changing a region, port, username, password, or sender setting.",
+        ],
+        note: "The current release stores and tests the connection only. It does not send ticket notifications or accept tickets by email yet.",
+      },
+      {
+        title: "Credential protection",
+        text: [
+          "The SMTP password is encrypted with the server configuration key, never returned to the browser, and redacted from audit change records. Saving and testing are restricted to interactive administrators and produce audit events.",
+          "Rotate SMTP credentials periodically and immediately after suspected exposure. Saving a replacement resets the connection-test status.",
+        ],
+      },
+    ],
+    related: ["api", "audit", "notifications"],
+  },
+  {
     id: "audit",
     title: "Investigate activity in the audit center",
     category: "Administration",

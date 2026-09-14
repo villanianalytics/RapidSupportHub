@@ -3,6 +3,7 @@ import { Check, KeyRound, Plus, ShieldCheck } from "lucide-react";
 import { api, Catalog, date, label, User } from "./api";
 import { Field, Modal } from "./main";
 import { SSOSettings } from "./sso";
+import { EmailSettings } from "./mail";
 
 const roleOptions = [
   "admin",
@@ -114,6 +115,7 @@ export function Admin({
     ["sla", "SLA policies"],
     ["api", "API access"],
     ["sso", "Single sign-on"],
+    ["email", "Email delivery"],
   ];
   return (
     <>
@@ -148,6 +150,9 @@ export function Admin({
           <button className="secondary" onClick={() => setTab("sso")}>
             Configure Microsoft Entra
           </button>
+          <button className="secondary" onClick={() => setTab("email")}>
+            Configure Amazon SES
+          </button>
         </div>
       </section>
       <div className="tabs">
@@ -175,6 +180,7 @@ export function Admin({
               sla: "sla-config",
               api: "api",
               sso: "sso",
+              email: "email",
             }[tab] || "workspace",
           )
         }
@@ -193,6 +199,7 @@ export function Admin({
         </div>
       )}
       {tab === "sso" && <SSOSettings users={users} />}
+      {tab === "email" && <EmailSettings />}
       {tab === "workspace" && (
         <div className="settings-grid">
           {(["products", "companies"] as const).map((entity) => (
