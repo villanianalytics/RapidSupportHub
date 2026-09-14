@@ -23,8 +23,8 @@ export function RoutingSettings({ catalog, refresh }: { catalog: Catalog; refres
     {notice && <div className="success"><Check size={16}/>{notice}</div>}
     <div className="settings-grid">
       <section className="panel description">
-        <h2>Issue categories</h2>
-        <p className="muted">Categories appear on support tickets and internal issues. Their classification connects them to SLA reporting.</p>
+        <h2>Issue categories and types</h2>
+        <p className="muted">Categories appear on support tickets; applicable options appear as types when logging internal issues. Bug, Question, and Enhancement are always available. Their classification connects them to SLA reporting.</p>
         <div className="entity-list">{data.categories.map((c) => <div key={c.id}><strong>{c.name}</strong><small>{label(c.incident_type)} · {c.kind}</small></div>)}</div>
         <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); run(() => api("/admin/routing/categories", "POST", { name: f.get("name"), kind: f.get("kind"), incident_type: f.get("type"), active: true }), "Category created."); e.currentTarget.reset(); }}>
           <Field label="Category name"><input name="name" required /></Field>

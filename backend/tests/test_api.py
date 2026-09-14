@@ -890,6 +890,12 @@ def test_profiles_categories_and_assignment_rules(setup):
     from app.models import IssueCategory, SupportGroup
 
     client, company, _, product, users = setup
+    issue_types = {
+        item["name"]
+        for item in client.get("/api/catalog").json()["categories"]
+        if item["kind"] in {"bug", "both"}
+    }
+    assert {"Bug", "Question", "Enhancement"} <= issue_types
     dev = next(item for item in client.get("/api/admin/users").json() if item["id"] == users["dev_id"])
     updated = client.patch(
         f"/api/admin/users/{users['dev_id']}",

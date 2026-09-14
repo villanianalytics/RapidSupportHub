@@ -84,16 +84,25 @@ async def lifespan(app):
                 )
             )
             db.commit()
-        if not db.scalar(select(IssueCategory.id).limit(1)):
-            db.add_all(
-                [
-                    IssueCategory(name="Question", kind="support", incident_type="question"),
-                    IssueCategory(name="Service outage", kind="support", incident_type="outage"),
-                    IssueCategory(name="Software problem", kind="both", incident_type="bug"),
-                    IssueCategory(name="Enhancement", kind="both", incident_type="enhancement"),
-                    IssueCategory(name="Internal engineering issue", kind="bug", incident_type="bug"),
-                ]
-            )
+        defaults = [
+            ("Question", "both", "question"),
+            ("Service outage", "support", "outage"),
+            ("Software problem", "support", "bug"),
+            ("Bug", "bug", "bug"),
+            ("Enhancement", "both", "enhancement"),
+        ]
+        existing = {item.name: item for item in db.scalars(select(IssueCategory))}
+        for name, kind, incident_type in defaults:
+            if name not in existing:
+                db.add(
+                    IssueCategory(name=name, kind=kind, incident_type=incident_type, active=True)
+                )
+            elif name in {"Question", "Enhancement"}:
+                # These baseline types must remain available to both support and engineering.
+                existing[name].kind = "both"
+                existing[name].active = True
+                existing[name].incident_type = incident_type
+        if db.new or db.dirty:
             db.commit()
     worker = None
     if os.getenv("EMAIL_WORKER_ENABLED", "true").lower() == "true":

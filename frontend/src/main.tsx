@@ -1377,7 +1377,7 @@ function CreateTicket({
               ))}
             </select>
           </Field>
-          <Field label="Issue category">
+          <Field label={kind === "bug" ? "Issue type" : "Issue category"}>
             <select name="category" defaultValue="" required>
               <option value="" disabled>Select a category</option>
               {catalog.categories.filter((c)=>c.kind===kind||c.kind==="both").map((c) => (
