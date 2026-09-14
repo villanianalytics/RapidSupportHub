@@ -65,6 +65,10 @@ async def lifespan(app):
     if "category_id" not in {column["name"] for column in columns}:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE tickets ADD COLUMN category_id INTEGER"))
+    columns = inspect(engine).get_columns("issue_categories")
+    if "parent_id" not in {column["name"] for column in columns}:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE issue_categories ADD COLUMN parent_id INTEGER"))
     with SessionLocal() as db:
         auditing.initialize(db)
         if not db.scalar(select(User).limit(1)):
@@ -340,6 +344,12 @@ def catalog(user: User = Depends(identity), db: Session = Depends(get_db)):
                 "name": item.name,
                 "kind": item.kind,
                 "incident_type": item.incident_type,
+                "parent_id": item.parent_id,
+                "display_name": (
+                    f"{db.get(IssueCategory, item.parent_id).name} › {item.name}"
+                    if item.parent_id
+                    else item.name
+                ),
             }
             for item in db.scalars(
                 select(IssueCategory)
@@ -548,7 +558,11 @@ def ticket_dict(db, ticket, user, detail=False):
     result["product"] = db.get(Product, ticket.product_id).name
     result["company"] = db.get(Company, ticket.company_id).name if ticket.company_id else "Internal"
     category = db.get(IssueCategory, ticket.category_id) if ticket.category_id else None
-    result["category"] = category.name if category else ticket.incident_type
+    result["category"] = (
+        f"{db.get(IssueCategory, category.parent_id).name} › {category.name}"
+        if category and category.parent_id
+        else category.name if category else ticket.incident_type
+    )
     if staff(user):
         result["sla"] = sla.summary(db, ticket)
         result["attention"] = workspace.attention_reasons(db, ticket, result["sla"])

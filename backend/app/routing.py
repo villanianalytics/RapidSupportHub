@@ -43,6 +43,7 @@ def configuration(db):
                 "kind": item.kind,
                 "incident_type": item.incident_type,
                 "active": item.active,
+                "parent_id": item.parent_id,
             }
             for item in db.scalars(select(IssueCategory).order_by(IssueCategory.name))
         ],
@@ -72,6 +73,7 @@ def get_configuration(user=Depends(require_admin), db: Session = Depends(get_db)
 def create_category(
     data: s.CategoryInput, user=Depends(require_admin), db: Session = Depends(get_db)
 ):
+    validate_parent(db, data.parent_id, data.kind)
     item = IssueCategory(**data.model_dump())
     db.add(item)
     db.add(Audit(actor_id=user.id, action="issue_category_created", details={"name": item.name}))
@@ -89,11 +91,24 @@ def update_category(
     item = db.get(IssueCategory, category_id)
     if not item:
         raise HTTPException(404, "Issue category not found")
+    validate_parent(db, data.parent_id, data.kind, category_id)
     for key, value in data.model_dump().items():
         setattr(item, key, value)
     db.add(Audit(actor_id=user.id, action="issue_category_updated", details={"id": item.id}))
     db.commit()
     return configuration(db)
+
+
+def validate_parent(db, parent_id, kind, category_id=None):
+    if parent_id is None:
+        return
+    if parent_id == category_id:
+        raise HTTPException(422, "A category cannot be its own parent")
+    parent = db.get(IssueCategory, parent_id)
+    if not parent or parent.parent_id is not None:
+        raise HTTPException(422, "Choose a top-level parent category")
+    if parent.kind != "both" and kind != parent.kind:
+        raise HTTPException(422, "Subcategory applicability must match its parent")
 
 
 @router.post("/groups", status_code=201)

@@ -172,6 +172,7 @@ class IssueCategory(Base):
     kind: Mapped[str] = mapped_column(String(20), default="both")
     incident_type: Mapped[str] = mapped_column(String(30), default="question")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("issue_categories.id"), index=True)
 
 
 class SupportGroup(Base):

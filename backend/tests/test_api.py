@@ -928,8 +928,40 @@ def test_profiles_categories_and_assignment_rules(setup):
     category = next(
         item for item in category_result.json()["categories"] if item["name"] == "Data import enhancement"
     )
+    child_result = client.post(
+        "/api/admin/routing/categories",
+        json={
+            "name": "Excel workbook import",
+            "kind": "both",
+            "incident_type": "enhancement",
+            "active": True,
+            "parent_id": category["id"],
+        },
+    )
+    assert child_result.status_code == 201
+    child = next(
+        item for item in child_result.json()["categories"] if item["name"] == "Excel workbook import"
+    )
+    assert child["parent_id"] == category["id"]
+    assert (
+        client.post(
+            "/api/admin/routing/categories",
+            json={
+                "name": "Invalid third level",
+                "kind": "both",
+                "incident_type": "enhancement",
+                "active": True,
+                "parent_id": child["id"],
+            },
+        ).status_code
+        == 422
+    )
     with SessionLocal() as db:
         assert db.get(IssueCategory, category["id"])
+    child_catalog = next(
+        item for item in client.get("/api/catalog").json()["categories"] if item["id"] == child["id"]
+    )
+    assert child_catalog["display_name"] == "Data import enhancement › Excel workbook import"
 
     group_result = client.post(
         "/api/admin/routing/groups", json={"name": "Data team", "description": ""}

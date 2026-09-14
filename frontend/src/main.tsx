@@ -1381,7 +1381,7 @@ function CreateTicket({
             <select name="category" defaultValue="" required>
               <option value="" disabled>Select a category</option>
               {catalog.categories.filter((c)=>c.kind===kind||c.kind==="both").map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>{c.display_name}</option>
               ))}
             </select>
           </Field>
@@ -1723,7 +1723,7 @@ function TicketDetail({
                     onChange={(e) => patch({ category_id: Number(e.target.value) })}
                   >
                     {!t.category_id && <option value="">{label(t.incident_type)}</option>}
-                    {catalog.categories.filter((c)=>c.kind===t.kind||c.kind==="both").map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
+                    {catalog.categories.filter((c)=>c.kind===t.kind||c.kind==="both").map((c)=><option key={c.id} value={c.id}>{c.display_name}</option>)}
                   </select>
                 </Field>
                 <Field label="Move to status">

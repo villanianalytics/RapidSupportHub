@@ -16,7 +16,7 @@ export type Catalog = {
   products: { id: number; name: string; description: string }[];
   companies: { id: number; name: string }[];
   agents: { id: number; name: string }[];
-  categories: { id: number; name: string; kind: string; incident_type: string }[];
+  categories: { id: number; name: string; display_name: string; kind: string; incident_type: string; parent_id: number | null }[];
 };
 export type SLACycle = {
   id: number;

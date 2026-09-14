@@ -56,6 +56,7 @@ class CategoryInput(BaseModel):
     kind: Literal["support", "bug", "both"] = "both"
     incident_type: Literal["outage", "bug", "question", "enhancement"] = "question"
     active: bool = True
+    parent_id: int | None = None
 
 
 class GroupMembers(BaseModel):

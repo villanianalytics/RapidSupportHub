@@ -455,7 +455,7 @@ export const guides: Guide[] = [
           "Open Issue tracker and select Log an issue.",
           "Choose the product/project, write a clear title, and describe the issue.",
           "Add reproduction steps and the affected version. Set severity and assignment as needed.",
-          "Choose an issue type, including Bug, Question, or Enhancement. Create the issue and use its conversation, private notes, and attachments to document investigation. Administrators can add more types under Categories & assignment.",
+          "Choose an issue type or subcategory, including Bug, Question, or Enhancement. Create the issue and use its conversation, private notes, and attachments to document investigation. Administrators can add more types and one level of subcategories under Categories & assignment.",
         ],
       },
       {
