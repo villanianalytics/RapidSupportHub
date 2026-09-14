@@ -18,6 +18,19 @@ type Configuration = {
   updated_at: string;
 };
 
+type Deliveries = {
+  counts: Record<string, number>;
+  recent: {
+    id: number;
+    ticket_id: number;
+    kind: string;
+    status: string;
+    attempts: number;
+    created_at: string;
+    sent_at: string | null;
+  }[];
+};
+
 export function EmailSettings() {
   const [data, setData] = useState<{
     server_ready: boolean;
@@ -26,7 +39,12 @@ export function EmailSettings() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = () => api("/admin/email").then(setData);
+  const [deliveries, setDeliveries] = useState<Deliveries>({ counts: {}, recent: [] });
+  const load = () =>
+    Promise.all([
+      api("/admin/email").then(setData),
+      api("/admin/email/deliveries").then(setDeliveries),
+    ]);
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
@@ -57,9 +75,9 @@ export function EmailSettings() {
           <Mail size={25} />
         </div>
         <p>
-          Store the credentials RapidSupportHub will use for outbound email.
-          Saving or testing this configuration does not send a message and does
-          not enable ticket creation by email.
+          Send permission-aware email for ticket and internal issue creation,
+          updates, assignments, replies, status changes, and watcher activity.
+          Ticket creation by inbound email remains a later phase.
         </p>
         <p className="muted">
           Create SMTP credentials in the Amazon SES console for the selected
@@ -186,11 +204,11 @@ export function EmailSettings() {
                 type="checkbox"
                 defaultChecked={config?.enabled || false}
               />
-              Mark this connection ready for outbound email
+              Enable outbound ticket and issue notifications
             </label>
             <p className="muted small">
-              This readiness switch is reserved for the outbound-email phase;
-              the current release will not send ticket email.
+              When enabled, new notifications enter a durable delivery queue.
+              Failed sends retry automatically without blocking ticket work.
             </p>
             <button className="primary" disabled={busy || !data.server_ready}>
               Save SMTP configuration
@@ -253,6 +271,55 @@ export function EmailSettings() {
           </p>
         </section>
       </div>
+      <section className="panel description">
+        <h2>Notification delivery</h2>
+        <dl className="configuration-summary">
+          {(["pending", "retrying", "sent", "failed", "suppressed"] as const).map(
+            (status) => (
+              <div key={status}>
+                <dt>{status}</dt>
+                <dd>{deliveries.counts[status] || 0}</dd>
+              </div>
+            ),
+          )}
+        </dl>
+        {deliveries.recent.length ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Ticket</th><th>Event</th><th>Status</th><th>Attempts</th><th>Created</th></tr>
+              </thead>
+              <tbody>
+                {deliveries.recent.map((item) => (
+                  <tr key={item.id}>
+                    <td>#{item.ticket_id}</td>
+                    <td>{item.kind.replaceAll("_", " ")}</td>
+                    <td>{item.status}</td>
+                    <td>{item.attempts}</td>
+                    <td>{date(item.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="muted">No notification email has been queued yet.</p>
+        )}
+        {(deliveries.counts.failed || 0) > 0 && (
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() =>
+              execute(
+                () => api("/admin/email/deliveries/retry", "POST"),
+                "Failed notifications queued for another delivery attempt.",
+              )
+            }
+          >
+            Retry failed notifications
+          </button>
+        )}
+      </section>
     </>
   );
 }

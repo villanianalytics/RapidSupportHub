@@ -11,6 +11,15 @@ def can_read(db, user, ticket_id):
     return db.scalar(visible_query(user).where(Ticket.id == ticket_id)) is not None
 
 
+def add_notification(db, recipient, ticket, kind, internal=False):
+    db.add(
+        Notification(user_id=recipient.id, ticket_id=ticket.id, kind=kind, internal=internal)
+    )
+    from .mail import queue_delivery
+
+    queue_delivery(db, recipient, ticket, kind, internal)
+
+
 def notify(db, ticket, actor, kind, internal=False, extra_recipients=()):
     recipients = {ticket.creator_id, ticket.assignee_id, *extra_recipients}
     recipients.update(db.scalars(select(Watcher.user_id).where(Watcher.ticket_id == ticket.id)))
@@ -23,11 +32,23 @@ def notify(db, ticket, actor, kind, internal=False, extra_recipients=()):
         if internal and not staff(recipient):
             continue
         if can_read(db, recipient, ticket.id):
-            db.add(
-                Notification(
-                    user_id=recipient_id, ticket_id=ticket.id, kind=kind, internal=internal
-                )
-            )
+            add_notification(db, recipient, ticket, kind, internal)
+
+
+def confirm_creation(db, ticket, actor):
+    """Email a human creator a receipt without adding a self-notification."""
+    if actor.active and not actor.automation and actor.email:
+        from .mail import queue_delivery
+
+        queue_delivery(db, actor, ticket, "ticket_created", ticket.kind == "bug")
+
+
+def notify_unassigned_staff_by_email(db, ticket, actor):
+    from .mail import queue_delivery
+
+    for recipient in db.scalars(select(User).where(User.active.is_(True))):
+        if recipient.id != actor.id and not recipient.automation and staff(recipient):
+            queue_delivery(db, recipient, ticket, "ticket_created", ticket.kind == "bug")
 
 
 def organization(db, ticket, user):

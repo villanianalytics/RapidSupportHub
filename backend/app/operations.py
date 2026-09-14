@@ -153,9 +153,7 @@ def watch(
         db.add(Watcher(ticket_id=ticket_id, user_id=user_id))
         audit(db, user, "watcher_added", ticket_id, {"user_id": user_id})
         if user_id != user.id:
-            db.add(
-                Notification(user_id=user_id, ticket_id=ticket.id, kind="watching", internal=False)
-            )
+            workspace.add_notification(db, target, ticket, "watching")
     db.commit()
     return {"ok": True}
 
@@ -253,6 +251,8 @@ def organize(
         details["duplicate_of_id"] = target_id
     ticket.updated_at = now()
     audit(db, user, "organization_changed", ticket_id, details)
+    if details:
+        workspace.notify(db, ticket, user, "ticket_updated", internal=True)
     db.commit()
     return ticket_dict(db, ticket, user, True)
 

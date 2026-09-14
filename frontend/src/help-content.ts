@@ -48,7 +48,7 @@ export const guides: Guide[] = [
           "Select Test SMTP connection to open a secure connection and authenticate. The test does not send an email. A successful result confirms the endpoint and credentials, but SES identity, sandbox, suppression, and sending-policy problems can still affect future delivery.",
           "Every save clears the previous test result. Test again after changing a region, port, username, password, or sender setting.",
         ],
-        note: "The current release stores and tests the connection only. It does not send ticket notifications or accept tickets by email yet.",
+        note: "When enabled, the connection sends ticket and internal issue notifications. Creating tickets through inbound email remains a later phase.",
       },
       {
         title: "Credential protection",
@@ -298,7 +298,7 @@ export const guides: Guide[] = [
       {
         title: "Which updates appear",
         text: [
-          "The creator, current assignee, and watchers receive relevant in-app activity, excluding their own actions. Staff may receive private-note notifications; customers do not. Notifications are checked against current access permissions.",
+          "The creator, current assignee, and watchers receive relevant in-app and email activity, excluding their own actions. Creators receive an email receipt for new records. Staff may receive private-note and internal issue notifications; customers do not. Access is checked again before each email is sent.",
           "The inbox refreshes about every 30 seconds. Stopping a watcher subscription does not stop notifications you receive because you are the creator or assignee.",
         ],
         note: "Notifications are in-app only. No email is sent.",

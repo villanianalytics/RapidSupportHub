@@ -23,6 +23,7 @@ from . import schemas as s
 from .db import Base, SessionLocal, engine, get_db, now
 from .entra import router as entra_router
 from .mail import router as mail_router
+from .mail import start_worker
 from .models import (
     Attachment,
     Audit,
@@ -72,7 +73,16 @@ async def lifespan(app):
                 )
             )
             db.commit()
-    yield
+    worker = None
+    if os.getenv("EMAIL_WORKER_ENABLED", "true").lower() == "true":
+        worker = start_worker()
+    try:
+        yield
+    finally:
+        if worker:
+            stop, thread = worker
+            stop.set()
+            thread.join(timeout=6)
 
 
 app = FastAPI(
@@ -602,7 +612,16 @@ def create_ticket(
     audit(db, user, "ticket_created", ticket)
     if not user.automation:
         db.add(Watcher(ticket_id=ticket.id, user_id=user.id))
-    workspace.notify(db, ticket, user, "assigned" if ticket.assignee_id else "ticket_created")
+    workspace.notify(
+        db,
+        ticket,
+        user,
+        "assigned" if ticket.assignee_id else "ticket_created",
+        internal=ticket.kind == "bug",
+    )
+    workspace.confirm_creation(db, ticket, user)
+    if ticket.assignee_id is None:
+        workspace.notify_unassigned_staff_by_email(db, ticket, user)
     db.commit()
     return ticket_dict(db, ticket, user, True)
 
@@ -689,6 +708,7 @@ def apply_ticket_update(
     ):
         raise HTTPException(422, "Propose a resolution before closing a support ticket")
     at = now()
+    ticket.updated_at = at
     resolving = data.status in {"pending_approval", "closed"} and ticket.status not in {
         "pending_approval",
         "closed",
@@ -697,6 +717,7 @@ def apply_ticket_update(
         raise HTTPException(422, "Provide a resolution before resolving the ticket")
     if resolving and user.automation and ticket.kind == "support":
         raise HTTPException(403, "A human must propose the customer resolution")
+    changed_other = False
     for field in fields - {"status"}:
         value = getattr(data, field)
         if value is None and field not in {"assignee_id", "linked_bug_id"}:
@@ -714,6 +735,10 @@ def apply_ticket_update(
             )
             if field == "assignee_id":
                 workspace.notify(db, ticket, user, "assigned", internal=True)
+            else:
+                changed_other = True
+    if changed_other:
+        workspace.notify(db, ticket, user, "ticket_updated", internal=ticket.kind == "bug")
     # In-flight SLA targets remain fixed; classification changes cannot erase a breach.
     if resolving and ticket.kind == "support":
         db.add(
@@ -731,7 +756,6 @@ def apply_ticket_update(
         db.add(Message(ticket_id=ticket.id, author_id=user.id, body=data.reason, created_at=at))
         if not staff(user) and ticket.status == "in_progress":
             sla.start_cycle(db, ticket, "reply", at)
-    ticket.updated_at = at
     db.flush()
     return ticket
 
@@ -829,6 +853,7 @@ def upload(
             internal=internal,
         )
         db.add(record)
+        ticket.updated_at = now()
         audit(
             db,
             user,
@@ -836,6 +861,7 @@ def upload(
             ticket,
             {"filename": filename, "internal": internal},
         )
+        workspace.notify(db, ticket, user, "attachment_added", internal=internal)
         db.commit()
     except Exception:
         path.unlink(missing_ok=True)

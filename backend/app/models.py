@@ -148,6 +148,21 @@ class Notification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class EmailDelivery(Base):
+    __tablename__ = "email_deliveries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    internal: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    last_error: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class TicketTag(Base):
     __tablename__ = "ticket_tags"
     ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)

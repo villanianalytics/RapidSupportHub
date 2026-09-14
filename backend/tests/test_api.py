@@ -9,6 +9,7 @@ if test_url and not test_url.endswith("/rsh_test"):
 os.environ["DATABASE_URL"] = test_url or "sqlite:///" + str(Path(tempfile.mkdtemp()) / "test.db")
 os.environ["ADMIN_PASSWORD"] = "Test-only-initial-123!"
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp()
+os.environ["EMAIL_WORKER_ENABLED"] = "false"
 
 import pytest
 from app.db import Base, SessionLocal, engine, now
@@ -823,3 +824,63 @@ def test_amazon_ses_smtp_configuration(setup, monkeypatch):
     monkeypatch.setattr(mail, "verify_connection", lambda record: (_ for _ in ()).throw(OSError()))
     assert client.post("/api/admin/email/test").status_code == 422
     assert client.get("/api/admin/email").json()["configuration"]["last_test_ok"] is False
+
+
+def test_notification_email_queue_delivery_and_permission_recheck(setup, monkeypatch):
+    from app import mail
+    from app.entra import cipher
+    from app.models import EmailDelivery, SMTPConfiguration
+    from cryptography.fernet import Fernet
+
+    client, company, _, product, users = setup
+    monkeypatch.setenv("SSO_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    with SessionLocal() as db:
+        db.get(User, users["alice_id"]).email = "alice@example.com"
+        db.get(User, users["dev_id"]).email = "dev@example.com"
+        db.add(
+            SMTPConfiguration(
+                id=1,
+                region="us-east-1",
+                port=587,
+                username="smtp-user",
+                password_encrypted=cipher().encrypt(b"smtp-password").decode(),
+                from_email="support@example.com",
+                from_name="RapidSupportHub",
+                enabled=True,
+            )
+        )
+        db.commit()
+
+    created = ticket(client, company, product, headers=users["alice"])
+    with SessionLocal() as db:
+        queued = list(
+            db.scalars(
+                select(EmailDelivery).where(EmailDelivery.ticket_id == created["id"])
+            )
+        )
+        assert {item.user_id for item in queued} == {users["alice_id"], users["dev_id"]}
+        assert all(item.kind == "ticket_created" for item in queued)
+
+    sent = []
+    monkeypatch.setattr(mail, "_send", lambda config, message: sent.append(message))
+    assert mail.deliver_pending() == 2
+    assert {message["To"] for message in sent} == {"alice@example.com", "dev@example.com"}
+    status = client.get("/api/admin/email/deliveries").json()
+    assert status["counts"]["sent"] == 2
+
+    assert (
+        client.patch(
+            f"/api/tickets/{created['id']}",
+            headers=users["dev"],
+            json={"version": created["version"], "severity": "sev2"},
+        ).status_code
+        == 200
+    )
+    with SessionLocal() as db:
+        alice = db.get(User, users["alice_id"])
+        alice.active = False
+        db.commit()
+    sent.clear()
+    assert mail.deliver_pending() == 1
+    assert sent == []
+    assert client.get("/api/admin/email/deliveries").json()["counts"]["suppressed"] == 1
