@@ -866,7 +866,15 @@ test("administrator audit filtering, event details, export and mobile layout", a
     .getByLabel("Password", { exact: true })
     .fill("Changed-local-e2e-456!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByRole("button", { name: "Audit center", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Configure Microsoft Entra" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Microsoft Entra ID" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "View audit logs" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Audit center", exact: true }),
+  ).toBeVisible();
   await page.getByLabel("Exact action").fill("tickets.created");
   await page
     .getByRole("button", { name: "Apply filters", exact: true })
@@ -891,11 +899,9 @@ test("administrator audit filtering, event details, export and mobile layout", a
   });
   await page.getByRole("button", { name: "Help for this page" }).click();
   await expect(
-    page
-      .getByRole("dialog")
-      .getByRole("heading", {
-        name: "Investigate activity in the audit center",
-      }),
+    page.getByRole("dialog").getByRole("heading", {
+      name: "Investigate activity in the audit center",
+    }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
 });

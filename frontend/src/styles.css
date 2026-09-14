@@ -288,6 +288,13 @@ textarea::placeholder {
 }
 .sidebar-bottom {
   margin-top: auto;
+  flex-shrink: 0;
+}
+.sidebar nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .portal-status {
   font-size: 11px;
@@ -2454,7 +2461,36 @@ input[type="checkbox"] {
   margin: -8px 0 18px;
   min-height: 44px;
 }
+.admin-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 22px;
+}
+.admin-tools .eyebrow {
+  margin-bottom: 6px;
+}
+.admin-tools h2,
+.admin-tools p {
+  margin: 0;
+}
+.admin-tools p {
+  margin-top: 5px;
+}
+.admin-tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
 @media (max-width: 850px) {
+  .admin-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .admin-tool-actions > button {
+    flex: 1 1 220px;
+  }
   .help-dialog {
     width: calc(100vw - 20px);
     max-height: calc(100dvh - 20px);

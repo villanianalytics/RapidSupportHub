@@ -59,11 +59,13 @@ export function Admin({
   refresh,
   user,
   onHelp,
+  onAudit,
 }: {
   catalog: Catalog;
   refresh: () => Promise<void>;
   user: User;
   onHelp: (topic: string) => void;
+  onAudit: () => void;
 }) {
   const [tab, setTab] = useState("workspace"),
     [users, setUsers] = useState<User[]>([]),
@@ -127,6 +129,27 @@ export function Admin({
           <ShieldCheck size={14} /> ADMINISTRATOR
         </span>
       </div>
+      <section
+        className="panel admin-tools"
+        aria-labelledby="admin-tools-title"
+      >
+        <div>
+          <div className="eyebrow">ADMINISTRATOR TOOLS</div>
+          <h2 id="admin-tools-title">Security and access</h2>
+          <p className="muted">
+            Review recorded activity or connect your Microsoft identity
+            provider.
+          </p>
+        </div>
+        <div className="admin-tool-actions">
+          <button className="secondary" onClick={onAudit}>
+            View audit logs
+          </button>
+          <button className="secondary" onClick={() => setTab("sso")}>
+            Configure Microsoft Entra
+          </button>
+        </div>
+      </section>
       <div className="tabs">
         {tabs.map(([id, name]) => (
           <button

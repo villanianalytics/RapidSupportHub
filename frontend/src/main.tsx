@@ -463,9 +463,9 @@ function App() {
     ["notifications", "Notifications", Bell],
     ["account", "My account", ShieldCheck],
   );
+  if (isAdmin) nav.push(["audit", "Audit logs", ShieldCheck]);
   nav.push(["reports", "Reports", BarChart3]);
   nav.push(["help", "Help center", BookOpen]);
-  if (isAdmin) nav.push(["audit", "Audit center", ShieldCheck]);
   if (isAdmin) nav.push(["settings", "Settings", Settings]);
   function navigate(p: string) {
     setMenuOpen(false);
@@ -658,6 +658,7 @@ function App() {
               refresh={refresh}
               user={user}
               onHelp={setHelpTopic}
+              onAudit={() => navigate("audit")}
             />
           ) : page === "reports" ? (
             <Reports user={user} catalog={catalog} />
