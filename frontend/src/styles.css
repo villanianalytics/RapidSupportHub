@@ -296,29 +296,6 @@ textarea::placeholder {
   overflow-y: auto;
   scrollbar-width: thin;
 }
-.portal-status {
-  font-size: 11px;
-  color: #607669;
-  border: 1px solid var(--border);
-  background: #fbfcfa;
-  border-radius: 8px;
-  margin: 24px 7px;
-  padding: 14px;
-}
-.portal-status small {
-  display: block;
-  color: #9aa59f;
-  font-size: 9px;
-  margin: 8px 0 0 12px;
-}
-.live-dot {
-  display: inline-block;
-  background: #6e9f6c;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  margin-right: 7px;
-}
 .profile {
   display: flex;
   align-items: center;
@@ -1524,7 +1501,6 @@ td small span {
   .workspace-label,
   .nav-item > span,
   .nav-item > b,
-  .portal-status,
   .profile > div,
   .profile > .avatar {
     display: none;

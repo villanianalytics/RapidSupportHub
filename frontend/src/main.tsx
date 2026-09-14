@@ -547,10 +547,6 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="portal-status">
-            <span className="live-dot" /> Portal is live
-            <small>Email integration · coming later</small>
-          </div>
           <div className="profile">
             <span className="avatar">
               {user.name.slice(0, 2).toUpperCase()}
