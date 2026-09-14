@@ -917,6 +917,38 @@ test("overview cards navigate to their ticket sections", async ({ page }) => {
     .fill("Changed-local-e2e-456!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(page.locator(".shell")).toHaveClass(/sidebar-collapsed/);
+  expect(
+    await page.evaluate(() => localStorage.getItem("rsh-sidebar-collapsed")),
+  ).toBe("true");
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Expand sidebar" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(page.locator(".shell")).not.toHaveClass(/sidebar-collapsed/);
+  await expect(page.locator(".shell > main")).toHaveCSS("margin-left", "243px");
+
+  await page.getByRole("button", { name: "Use dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator(".sidebar")).toHaveCSS(
+    "background-color",
+    "rgb(24, 35, 31)",
+  );
+  expect(await page.evaluate(() => localStorage.getItem("rsh-theme"))).toBe(
+    "dark",
+  );
+  await page.screenshot({
+    path: "test-results/overview-dark.png",
+    fullPage: true,
+  });
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Use light mode" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Use light mode" }).click();
+
   await page
     .getByRole("button", { name: /Open tickets & issues:.*Open the support/ })
     .click();
@@ -939,6 +971,9 @@ test("overview cards navigate to their ticket sections", async ({ page }) => {
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("button", { name: "Collapse sidebar" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("button", { name: "Overview", exact: true }).click();
   await expect(

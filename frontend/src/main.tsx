@@ -18,10 +18,14 @@ import {
   List,
   LogOut,
   Menu,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings,
   ShieldCheck,
+  Sun,
   Ticket as TicketIcon,
   X,
 } from "lucide-react";
@@ -252,8 +256,26 @@ function App() {
   const [helpTopic, setHelpTopic] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("rsh-sidebar-collapsed") === "true",
+  );
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("rsh-theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  });
   const menuButton = useRef<HTMLButtonElement>(null),
     drawer = useRef<HTMLElement>(null);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem("rsh-theme", theme);
+  }, [theme]);
+  useEffect(() => {
+    localStorage.setItem("rsh-sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
   useEffect(() => {
     if (!menuOpen) return;
     const previous = document.body.style.overflow;
@@ -425,24 +447,34 @@ function App() {
   if (loading) return <div className="loading">Opening your workspace…</div>;
   if (!user || user.must_change_password)
     return (
-      <Auth
-        user={user}
-        onLogin={(next) => {
-          setUser(next);
-          setPage("overview");
-          setSelected(null);
-          setTickets([]);
-          setCounts({});
-          setCatalog({ products: [], companies: [], agents: [] });
-          setFilters({});
-          setSearch("");
-          setStatus("");
-          setMine(false);
-          setOffset(0);
-          setUnread(0);
-          setError("");
-        }}
-      />
+      <>
+        <button
+          className="theme-toggle auth-theme-toggle icon-button"
+          aria-label={`Use ${theme === "dark" ? "light" : "dark"} mode`}
+          title={`Use ${theme === "dark" ? "light" : "dark"} mode`}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+        </button>
+        <Auth
+          user={user}
+          onLogin={(next) => {
+            setUser(next);
+            setPage("overview");
+            setSelected(null);
+            setTickets([]);
+            setCounts({});
+            setCatalog({ products: [], companies: [], agents: [] });
+            setFilters({});
+            setSearch("");
+            setStatus("");
+            setMine(false);
+            setOffset(0);
+            setUnread(0);
+            setError("");
+          }}
+        />
+      </>
     );
   const staff = isStaff(user),
     isAdmin = user.roles.includes("admin"),
@@ -492,7 +524,7 @@ function App() {
     }
   }
   return (
-    <div className="shell">
+    <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {menuOpen && (
         <button
           className="nav-backdrop"
@@ -512,21 +544,38 @@ function App() {
         >
           <X size={22} />
         </button>
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("overview");
-          }}
-        >
-          <span className="brand-icon">
-            <Activity size={23} />
-          </span>
-          <span>
-            Rapid<span className="brand-light">SupportHub</span>
-          </span>
-        </a>
+        <div className="sidebar-header">
+          <a
+            className="brand"
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("overview");
+            }}
+          >
+            <span className="brand-icon">
+              <Activity size={23} />
+            </span>
+            <span>
+              Rapid<span className="brand-light">SupportHub</span>
+            </span>
+          </a>
+          <button
+            className="sidebar-toggle icon-button"
+            aria-label={
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            }
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!sidebarCollapsed}
+            onClick={() => setSidebarCollapsed((value) => !value)}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={19} />
+            ) : (
+              <PanelLeftClose size={19} />
+            )}
+          </button>
+        </div>
         <div className="workspace-label">
           WORKSPACE <span>v0.3</span>
         </div>
@@ -587,6 +636,14 @@ function App() {
                 day: "numeric",
               })}
             </span>
+            <button
+              className="theme-toggle icon-button"
+              aria-label={`Use ${theme === "dark" ? "light" : "dark"} mode`}
+              title={`Use ${theme === "dark" ? "light" : "dark"} mode`}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+            </button>
             <button
               className="icon-button"
               aria-label="Help for this page"

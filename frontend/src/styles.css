@@ -11,12 +11,20 @@
   --muted: #788780;
   --border: #e3e9e5;
   --soft: #f0f5f1;
+  --surface: #ffffff;
+  --surface-raised: #fbfcfa;
+  --text: #243a35;
 }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
+  background: inherit;
+  color: inherit;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 button,
 input,
@@ -218,6 +226,15 @@ textarea::placeholder {
   flex-direction: column;
   z-index: 10;
 }
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sidebar-toggle {
+  flex-shrink: 0;
+}
 .brand {
   display: flex;
   align-items: center;
@@ -367,6 +384,47 @@ textarea::placeholder {
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 851px) {
+  .sidebar,
+  .shell > main {
+    transition:
+      width 180ms ease,
+      margin-left 180ms ease;
+  }
+  .sidebar-collapsed .sidebar {
+    width: 76px;
+    padding-inline: 10px;
+  }
+  .shell.sidebar-collapsed > main {
+    margin-left: 76px;
+  }
+  .sidebar-collapsed .sidebar-header {
+    flex-direction: column;
+  }
+  .sidebar-collapsed .brand > span:not(.brand-icon),
+  .sidebar-collapsed .workspace-label,
+  .sidebar-collapsed .nav-item > span,
+  .sidebar-collapsed .nav-item > b,
+  .sidebar-collapsed .profile > div,
+  .sidebar-collapsed .profile > .avatar,
+  .sidebar-collapsed .sign-out > span {
+    display: none;
+  }
+  .sidebar-collapsed .sidebar nav {
+    margin-top: 18px;
+  }
+  .sidebar-collapsed .nav-item,
+  .sidebar-collapsed .profile {
+    justify-content: center;
+  }
+  .sidebar-collapsed .nav-item {
+    padding-inline: 0;
+  }
+  .sidebar-collapsed .sign-out {
+    width: 42px;
+  }
 }
 .topbar {
   height: 77px;
@@ -2573,4 +2631,131 @@ input[type="checkbox"] {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 20px;
+}
+
+/* Theme overrides stay at the end so every workspace surface follows the user's choice. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  color: #e5eee9;
+  background: #101815;
+  --green: #76c9a8;
+  --dark: #edf6f1;
+  --muted: #9aaea5;
+  --border: #33433c;
+  --soft: #24332d;
+  --surface: #18231f;
+  --surface-raised: #1d2a25;
+  --text: #e5eee9;
+}
+html[data-theme="dark"] :is(input, textarea, select) {
+  color: var(--text);
+  background: #141e1a;
+  border-color: var(--border);
+}
+html[data-theme="dark"] :is(input, textarea)::placeholder {
+  color: #778b82;
+}
+html[data-theme="dark"] :is(input, textarea, select):focus {
+  border-color: #76c9a8;
+  box-shadow: 0 0 0 3px #315545;
+}
+html[data-theme="dark"]
+  :is(
+    .sidebar,
+    .topbar,
+    .panel,
+    .stat,
+    .secondary,
+    .modal,
+    .help-dialog,
+    .help-card,
+    .audit-event,
+    .auth-form,
+    .ticket-card,
+    .kanban-card,
+    .saved-report,
+    .notification-card
+  ) {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+html[data-theme="dark"]
+  :is(
+    .toolbar,
+    .panel-heading,
+    .table-footer,
+    .kanban-column,
+    .ticket-meta,
+    .conversation article,
+    .report-chart,
+    .help-note,
+    .audit-detail pre,
+    .view-tools,
+    th,
+    .empty,
+    .overview-note
+  ) {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--border);
+}
+html[data-theme="dark"] :is(td, th, .view-tools, .ticket-list-footer) {
+  border-color: var(--border);
+}
+html[data-theme="dark"] tbody tr:hover {
+  background: #1f2d27;
+}
+html[data-theme="dark"] :is(.ticket-title, .text-button, .back) {
+  color: #8bd8b8;
+}
+html[data-theme="dark"]
+  :is(.nav-item:hover, .icon-button:hover, .secondary:hover) {
+  background: #26372f;
+}
+html[data-theme="dark"] .nav-item.active {
+  color: #bce8d4;
+  background: #294238;
+}
+html[data-theme="dark"] :is(.tabs, .segmented) {
+  background: #111b17;
+  border-color: var(--border);
+}
+html[data-theme="dark"] :is(.tabs button.active, .segmented button.selected) {
+  color: var(--text);
+  background: #2a3a33;
+}
+html[data-theme="dark"]
+  :is(.pill, .count, .stat > div > span, .avatar, .mini-avatar) {
+  color: #bce8d4;
+  background: #293a33;
+}
+html[data-theme="dark"] .error {
+  color: #ffc4b8;
+  background: #472821;
+  border-color: #754137;
+}
+html[data-theme="dark"] .success {
+  color: #bce8d4;
+  background: #203b30;
+  border-color: #315b49;
+}
+html[data-theme="dark"] .nav-backdrop {
+  background: #050907b8;
+}
+html[data-theme="dark"] .help-dialog::backdrop {
+  background: #050907b8;
+}
+.theme-toggle {
+  min-width: 36px;
+  min-height: 36px;
+}
+.auth-theme-toggle {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 20;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
