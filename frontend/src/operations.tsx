@@ -4,6 +4,7 @@ import {
   Check,
   Clock3,
   Eye,
+  LogOut,
   Plus,
   Save,
   ShieldCheck,
@@ -23,9 +24,11 @@ import { Field } from "./main";
 export function Account({
   user,
   onChanged,
+  onSignOut,
 }: {
   user: User;
   onChanged: (user: User) => void;
+  onSignOut: () => Promise<void>;
 }) {
   const [error, setError] = useState(""),
     [success, setSuccess] = useState(false),
@@ -40,6 +43,10 @@ export function Account({
           your organization. Portal roles and client access are managed by your
           support administrator.
         </p>
+        <button className="secondary account-sign-out" onClick={onSignOut}>
+          <LogOut size={17} />
+          Sign out of RapidSupportHub
+        </button>
       </section>
     );
   return (
@@ -129,6 +136,16 @@ export function Account({
             Change password
           </button>
         </form>
+      </section>
+      <section className="panel description account-panel">
+        <h2>Current session</h2>
+        <p className="muted">
+          Sign out when you are finished, especially on a shared device.
+        </p>
+        <button className="secondary account-sign-out" onClick={onSignOut}>
+          <LogOut size={17} />
+          Sign out of RapidSupportHub
+        </button>
       </section>
     </>
   );

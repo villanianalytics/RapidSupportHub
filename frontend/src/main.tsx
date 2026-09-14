@@ -481,6 +481,16 @@ function App() {
     navigate(p);
     setStatus(nextStatus);
   }
+  async function signOut() {
+    try {
+      await api("/auth/logout", "POST");
+    } finally {
+      setUser(null);
+      setSelected(null);
+      setMenuOpen(false);
+      setUnread(0);
+    }
+  }
   return (
     <div className="shell">
       {menuOpen && (
@@ -549,17 +559,9 @@ function App() {
               <strong>{user.name}</strong>
               <small>{label(user.roles[0])}</small>
             </div>
-            <button
-              aria-label="Sign out"
-              className="icon-button"
-              onClick={async () => {
-                await api("/auth/logout", "POST");
-                setUser(null);
-                setSelected(null);
-                setMenuOpen(false);
-              }}
-            >
+            <button className="sign-out" onClick={signOut}>
               <LogOut size={17} />
+              <span>Sign out</span>
             </button>
           </div>
         </div>
@@ -647,7 +649,7 @@ function App() {
           ) : page === "help" ? (
             <HelpCenter user={user} />
           ) : page === "account" ? (
-            <Account user={user} onChanged={setUser} />
+            <Account user={user} onChanged={setUser} onSignOut={signOut} />
           ) : page === "notifications" ? (
             <Notifications onOpen={open} onRead={refreshUnread} />
           ) : page === "attention" ? (

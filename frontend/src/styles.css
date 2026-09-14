@@ -343,6 +343,27 @@ textarea::placeholder {
   font-size: 10px;
   margin-top: 4px;
 }
+.sign-out {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: white;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 650;
+}
+.sign-out:hover {
+  background: var(--soft);
+}
+.account-sign-out {
+  margin-top: 8px;
+}
 .avatar,
 .mini-avatar {
   display: inline-flex;

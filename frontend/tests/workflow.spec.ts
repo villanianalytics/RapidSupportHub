@@ -451,7 +451,10 @@ test("account administration, watchers, saved views, bulk actions and attention"
     .getByRole("button", { name: "Reset password", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "My account", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Sign out of RapidSupportHub", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Welcome back." }),
   ).toBeVisible();
