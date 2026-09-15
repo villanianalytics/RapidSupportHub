@@ -15,6 +15,17 @@
   --surface-raised: #fbfcfa;
   --text: #243a35;
 }
+
+.preference-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.preference-row strong {
+  margin-right: auto;
+}
 * {
   box-sizing: border-box;
 }

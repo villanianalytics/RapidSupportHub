@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import get_db, now
-from .models import Credential, Ticket, User
+from .models import CompanyProduct, Credential, Ticket, User
 
 passwords = PasswordHash.recommended()
 STAFF_ROLES = {"admin", "agent", "developer"}
@@ -118,7 +118,17 @@ def visible_query(user):
         conditions.append(Ticket.company_id == user.company_id)
     from sqlalchemy import false, or_
 
-    return query.where(Ticket.kind == "support", or_(*conditions) if conditions else false())
+    query = query.where(Ticket.kind == "support", or_(*conditions) if conditions else false())
+    if user.company_id:
+        entitled = select(CompanyProduct.product_id).where(
+            CompanyProduct.company_id == user.company_id
+        )
+        # An empty entitlement list preserves access for existing client companies.
+        query = query.where(
+            ~select(CompanyProduct).where(CompanyProduct.company_id == user.company_id).exists()
+            | Ticket.product_id.in_(entitled)
+        )
+    return query
 
 
 def ticket_access(db, user, ticket_id):

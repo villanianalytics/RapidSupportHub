@@ -325,6 +325,8 @@ function App() {
       agents: [],
       categories: [],
       issue_types: [],
+      custom_fields: [],
+      releases: [],
     }),
     [tickets, setTickets] = useState<Ticket[]>([]),
     [counts, setCounts] = useState<Record<string, number>>({}),
@@ -354,6 +356,10 @@ function App() {
                     "severity",
                     "product_id",
                     "company_id",
+                    "category_id",
+                    "subcategory_id",
+                    "issue_type_id",
+                    "assignee_id",
                     "tag",
                     "watching",
                   ].includes(k) &&
@@ -466,7 +472,15 @@ function App() {
             setSelected(null);
             setTickets([]);
             setCounts({});
-            setCatalog({ products: [], companies: [], agents: [], categories: [], issue_types: [] });
+            setCatalog({
+              products: [],
+              companies: [],
+              agents: [],
+              categories: [],
+              issue_types: [],
+              custom_fields: [],
+              releases: [],
+            });
             setFilters({});
             setSearch("");
             setStatus("");
@@ -834,7 +848,7 @@ function App() {
                     <Search size={17} />
                     <input
                       aria-label="Search tickets"
-                      placeholder="Search ticket titles…"
+                      placeholder="Search tickets, replies, resolutions, versions…"
                       value={search}
                       onChange={(e) => {
                         setSearch(e.target.value);
@@ -1036,8 +1050,7 @@ function App() {
                               )}
                               <small>
                                 #{String(t.id).padStart(4, "0")} <span>·</span>{" "}
-                                {t.category} <span>·</span>{" "}
-                                {date(t.created_at)}
+                                {t.category} <span>·</span> {date(t.created_at)}
                               </small>
                             </td>
                             <td data-label="Client / project">
@@ -1301,22 +1314,45 @@ function CreateTicket({
           setError("");
           const f = new FormData(e.currentTarget);
           try {
+            const custom_values = Object.fromEntries(
+              catalog.custom_fields
+                .filter(
+                  (field) =>
+                    field.product_id === productId &&
+                    (field.kind === kind || field.kind === "both") &&
+                    (!field.category_id || field.category_id === categoryId),
+                )
+                .map((field) => [
+                  String(field.id),
+                  field.field_type === "checkbox"
+                    ? f.get(`custom_${field.id}`) === "on"
+                    : f.get(`custom_${field.id}`),
+                ]),
+            );
             let created = await api<Ticket>("/tickets", "POST", {
-                title: f.get("title"),
-                description: f.get("description"),
-                kind,
-                product_id: Number(f.get("product")),
-                company_id: f.get("company") ? Number(f.get("company")) : null,
-                severity: f.get("severity"),
-                category_id: Number(f.get("category")),
-                subcategory_id: f.get("subcategory") ? Number(f.get("subcategory")) : null,
-                issue_type_id: Number(f.get("issue_type")),
-                reproduction: f.get("reproduction") || "",
-                affected_version: f.get("version") || "",
-              });
-            const files = f.getAll("attachments").filter((file): file is File => file instanceof File && file.size > 0);
+              title: f.get("title"),
+              description: f.get("description"),
+              kind,
+              product_id: Number(f.get("product")),
+              company_id: f.get("company") ? Number(f.get("company")) : null,
+              severity: f.get("severity"),
+              category_id: Number(f.get("category")),
+              subcategory_id: f.get("subcategory")
+                ? Number(f.get("subcategory"))
+                : null,
+              issue_type_id: Number(f.get("issue_type")),
+              reproduction: f.get("reproduction") || "",
+              affected_version: f.get("version") || "",
+              custom_values,
+            });
+            const files = f
+              .getAll("attachments")
+              .filter(
+                (file): file is File => file instanceof File && file.size > 0,
+              );
             for (const file of files) {
-              const upload = new FormData(); upload.append("file", file);
+              const upload = new FormData();
+              upload.append("file", file);
               await api(`/tickets/${created.id}/attachments`, "POST", upload);
             }
             if (files.length) created = await api(`/tickets/${created.id}`);
@@ -1340,7 +1376,15 @@ function CreateTicket({
         </Field>
         <div className="form-grid">
           <Field label="Product / project">
-            <select name="product" required value={productId || ""} onChange={(e)=>{setProductId(Number(e.target.value));setCategoryId(0)}}>
+            <select
+              name="product"
+              required
+              value={productId || ""}
+              onChange={(e) => {
+                setProductId(Number(e.target.value));
+                setCategoryId(0);
+              }}
+            >
               <option value="" disabled>
                 Select a product
               </option>
@@ -1384,24 +1428,94 @@ function CreateTicket({
           </Field>
           <Field label="Issue type">
             <select name="issue_type" defaultValue="" required>
-              <option value="" disabled>Select an issue type</option>
-              {catalog.issue_types.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}
+              <option value="" disabled>
+                Select an issue type
+              </option>
+              {catalog.issue_types.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="Issue category">
-            <select name="category" value={categoryId || ""} required onChange={(e)=>setCategoryId(Number(e.target.value))}>
-              <option value="" disabled>Select a category</option>
-              {catalog.categories.filter((c)=>c.product_id===productId&&!c.parent_id&&(c.kind===kind||c.kind==="both")).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+            <select
+              name="category"
+              value={categoryId || ""}
+              required
+              onChange={(e) => setCategoryId(Number(e.target.value))}
+            >
+              <option value="" disabled>
+                Select a category
+              </option>
+              {catalog.categories
+                .filter(
+                  (c) =>
+                    c.product_id === productId &&
+                    !c.parent_id &&
+                    (c.kind === kind || c.kind === "both"),
+                )
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
             </select>
           </Field>
           <Field label="Subcategory (optional)">
             <select name="subcategory" defaultValue="" key={categoryId}>
               <option value="">No subcategory</option>
-              {catalog.categories.filter((c)=>c.parent_id===categoryId&&(c.kind===kind||c.kind==="both")).map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
+              {catalog.categories
+                .filter(
+                  (c) =>
+                    c.parent_id === categoryId &&
+                    (c.kind === kind || c.kind === "both"),
+                )
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
             </select>
           </Field>
+          {catalog.custom_fields
+            .filter(
+              (field) =>
+                field.product_id === productId &&
+                (field.kind === kind || field.kind === "both") &&
+                (!field.category_id || field.category_id === categoryId),
+            )
+            .map((field) => (
+              <Field key={field.id} label={field.name}>
+                {field.field_type === "textarea" ? (
+                  <textarea
+                    name={`custom_${field.id}`}
+                    required={field.required}
+                  />
+                ) : field.field_type === "select" ? (
+                  <select
+                    name={`custom_${field.id}`}
+                    required={field.required}
+                    defaultValue=""
+                  >
+                    <option value="">Select…</option>
+                    {field.options.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    name={`custom_${field.id}`}
+                    type={
+                      field.field_type === "checkbox"
+                        ? "checkbox"
+                        : field.field_type
+                    }
+                    required={field.required}
+                  />
+                )}
+              </Field>
+            ))}
         </div>
         <Field label="Description">
           <textarea
@@ -1420,7 +1534,9 @@ function CreateTicket({
             />
           </Field>
         )}
-        <Field label="Attachments (optional)"><input name="attachments" type="file" multiple /></Field>
+        <Field label="Attachments (optional)">
+          <input name="attachments" type="file" multiple />
+        </Field>
         {error && <div className="error">{error}</div>}
         <div className="modal-actions">
           <button type="button" className="secondary" onClick={onClose}>
@@ -1438,6 +1554,51 @@ function CreateTicket({
         </div>
       </form>
     </Modal>
+  );
+}
+
+function CustomFieldEditor({
+  field,
+  value,
+  onSave,
+}: {
+  field: Catalog["custom_fields"][number];
+  value: unknown;
+  onSave: (value: unknown) => void;
+}) {
+  if (field.field_type === "select")
+    return (
+      <select
+        value={String(value ?? "")}
+        onChange={(e) => onSave(e.target.value)}
+      >
+        <option value="">Select…</option>
+        {field.options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
+      </select>
+    );
+  if (field.field_type === "checkbox")
+    return (
+      <input
+        type="checkbox"
+        checked={Boolean(value)}
+        onChange={(e) => onSave(e.target.checked)}
+      />
+    );
+  if (field.field_type === "textarea")
+    return (
+      <textarea
+        defaultValue={String(value ?? "")}
+        onBlur={(e) => onSave(e.target.value)}
+      />
+    );
+  return (
+    <input
+      type={field.field_type}
+      defaultValue={String(value ?? "")}
+      onBlur={(e) => onSave(e.target.value)}
+    />
   );
 }
 
@@ -1501,7 +1662,12 @@ function TicketDetail({
             {t.company} <span>·</span> {t.product} <span>·</span> Opened{" "}
             {date(t.created_at)} by {t.creator}
           </p>
-          {t.submitter && <p className="muted">Submitter: {t.submitter.name} · {t.submitter.email || "No email"} · {t.submitter.phone || "No phone"}</p>}
+          {t.submitter && (
+            <p className="muted">
+              Submitter: {t.submitter.name} · {t.submitter.email || "No email"}{" "}
+              · {t.submitter.phone || "No phone"}
+            </p>
+          )}
         </div>
         <Badge status={t.status} />
       </div>
@@ -1525,6 +1691,30 @@ function TicketDetail({
               <p className="muted">Affected version: {t.affected_version}</p>
             )}
             {t.linked_bug_id && <p>Linked internal bug: #{t.linked_bug_id}</p>}
+            {!staff &&
+              catalog.custom_fields
+                .filter(
+                  (field) =>
+                    field.product_id === t.product_id &&
+                    (field.kind === t.kind || field.kind === "both") &&
+                    (!field.category_id || field.category_id === t.category_id),
+                )
+                .map((field) => (
+                  <Field key={field.id} label={field.name}>
+                    <CustomFieldEditor
+                      field={field}
+                      value={t.custom_values?.[String(field.id)]}
+                      onSave={(value) =>
+                        patch({
+                          custom_values: {
+                            ...(t.custom_values || {}),
+                            [String(field.id)]: value,
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                ))}
           </section>
           <section className="panel conversation">
             <div className="panel-heading">
@@ -1700,26 +1890,33 @@ function TicketDetail({
             <h2>Ticket details</h2>
             {staff ? (
               <>
-                {(user.roles.includes("admin") || user.roles.includes("assigner")) ? <Field label="Assigned to">
-                  <select
-                    value={t.assignee_id || ""}
-                    disabled={busy}
-                    onChange={(e) =>
-                      patch({
-                        assignee_id: e.target.value
-                          ? Number(e.target.value)
-                          : null,
-                      })
-                    }
-                  >
-                    <option value="">Unassigned</option>
-                    {catalog.agents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field> : <p><strong>Assigned to:</strong> {t.assignee}</p>}
+                {user.roles.includes("admin") ||
+                user.roles.includes("assigner") ? (
+                  <Field label="Assigned to">
+                    <select
+                      value={t.assignee_id || ""}
+                      disabled={busy}
+                      onChange={(e) =>
+                        patch({
+                          assignee_id: e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        })
+                      }
+                    >
+                      <option value="">Unassigned</option>
+                      {catalog.agents.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : (
+                  <p>
+                    <strong>Assigned to:</strong> {t.assignee}
+                  </p>
+                )}
                 <Field label="Severity">
                   <select
                     value={t.severity}
@@ -1734,25 +1931,120 @@ function TicketDetail({
                   </select>
                 </Field>
                 <Field label="Issue type">
-                  <select value={t.issue_type_id || ""} disabled={busy} onChange={(e)=>patch({issue_type_id:Number(e.target.value)})}>
-                    {!t.issue_type_id && <option value="">{t.issue_type}</option>}
-                    {catalog.issue_types.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}
+                  <select
+                    value={t.issue_type_id || ""}
+                    disabled={busy}
+                    onChange={(e) =>
+                      patch({ issue_type_id: Number(e.target.value) })
+                    }
+                  >
+                    {!t.issue_type_id && (
+                      <option value="">{t.issue_type}</option>
+                    )}
+                    {catalog.issue_types.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field label="Issue category">
                   <select
                     value={t.category_id || ""}
                     disabled={busy}
-                    onChange={(e) => patch({ category_id: Number(e.target.value), subcategory_id: null })}
+                    onChange={(e) =>
+                      patch({
+                        category_id: Number(e.target.value),
+                        subcategory_id: null,
+                      })
+                    }
                   >
-                    {!t.category_id && <option value="">Legacy / uncategorized</option>}
-                    {catalog.categories.filter((c)=>c.product_id===t.product_id&&!c.parent_id&&(c.kind===t.kind||c.kind==="both")).map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
+                    {!t.category_id && (
+                      <option value="">Legacy / uncategorized</option>
+                    )}
+                    {catalog.categories
+                      .filter(
+                        (c) =>
+                          c.product_id === t.product_id &&
+                          !c.parent_id &&
+                          (c.kind === t.kind || c.kind === "both"),
+                      )
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
                   </select>
                 </Field>
                 <Field label="Subcategory">
-                  <select value={t.subcategory_id || ""} disabled={busy || !t.category_id} onChange={(e)=>patch({subcategory_id:e.target.value?Number(e.target.value):null})}>
+                  <select
+                    value={t.subcategory_id || ""}
+                    disabled={busy || !t.category_id}
+                    onChange={(e) =>
+                      patch({
+                        subcategory_id: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                  >
                     <option value="">No subcategory</option>
-                    {catalog.categories.filter((c)=>c.parent_id===t.category_id&&(c.kind===t.kind||c.kind==="both")).map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
+                    {catalog.categories
+                      .filter(
+                        (c) =>
+                          c.parent_id === t.category_id &&
+                          (c.kind === t.kind || c.kind === "both"),
+                      )
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                {catalog.custom_fields
+                  .filter(
+                    (field) =>
+                      field.product_id === t.product_id &&
+                      (field.kind === t.kind || field.kind === "both") &&
+                      (!field.category_id ||
+                        field.category_id === t.category_id),
+                  )
+                  .map((field) => (
+                    <Field key={field.id} label={field.name}>
+                      <CustomFieldEditor
+                        field={field}
+                        value={t.custom_values?.[String(field.id)]}
+                        onSave={(value) =>
+                          patch({
+                            custom_values: {
+                              ...(t.custom_values || {}),
+                              [String(field.id)]: value,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                  ))}
+                <Field label="Fixed in release">
+                  <select
+                    value={t.fixed_release_id || ""}
+                    onChange={(e) =>
+                      patch({
+                        fixed_release_id: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                  >
+                    <option value="">Not scheduled</option>
+                    {catalog.releases
+                      .filter((r) => r.product_id === t.product_id)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.version} · {label(r.status)}
+                        </option>
+                      ))}
                   </select>
                 </Field>
                 <Field label="Move to status">
@@ -1813,6 +2105,50 @@ function TicketDetail({
                     </button>
                   </form>
                 )}
+                <div className="entity-list">
+                  {t.relations?.map((link) => (
+                    <div key={`${link.relation}-${link.ticket_id}`}>
+                      <strong>
+                        #{link.ticket_id} {link.title}
+                      </strong>
+                      <small>{label(link.relation)}</small>
+                    </div>
+                  ))}
+                </div>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const f = new FormData(e.currentTarget);
+                    setBusy(true);
+                    try {
+                      await api(`/tickets/${t.id}/relations`, "POST", {
+                        target_id: Number(f.get("target")),
+                        relation: f.get("relation"),
+                      });
+                      onChange(await api(`/tickets/${t.id}`));
+                      e.currentTarget.reset();
+                    } catch (e) {
+                      setError((e as Error).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <Field label="Related ticket or issue ID">
+                    <input name="target" type="number" min="1" required />
+                  </Field>
+                  <Field label="Relationship">
+                    <select name="relation">
+                      <option value="related">Related</option>
+                      <option value="blocks">Blocks</option>
+                      <option value="caused_by">Caused by</option>
+                      <option value="duplicates">Duplicates</option>
+                    </select>
+                  </Field>
+                  <button className="secondary full" disabled={busy}>
+                    Add relationship
+                  </button>
+                </form>
               </>
             ) : (
               <>

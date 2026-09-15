@@ -161,7 +161,8 @@ export function Notifications({
   const [data, setData] = useState<any>({ items: [], unread_count: 0 }),
     [unread, setUnread] = useState(false),
     [offset, setOffset] = useState(0),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [preferences, setPreferences] = useState<any[]>([]);
   async function load() {
     try {
       setData(await api(`/notifications?unread=${unread}&offset=${offset}`));
@@ -171,6 +172,9 @@ export function Notifications({
   }
   useEffect(() => {
     load();
+    api("/preferences")
+      .then(setPreferences)
+      .catch(() => {});
     const timer = setInterval(load, 30000);
     return () => clearInterval(timer);
   }, [unread, offset]);
@@ -199,6 +203,55 @@ export function Notifications({
           Mark all as read
         </button>
       </div>
+      <section className="panel description">
+        <h2>Notification preferences</h2>
+        <p className="muted">
+          Choose in-app and email delivery for each event.
+        </p>
+        {[
+          "ticket_created",
+          "ticket_updated",
+          "assigned",
+          "staff_reply",
+          "customer_reply",
+          "private_note",
+          "release",
+        ].map((event) => {
+          const pref = preferences.find((p) => p.event === event) || {
+            event,
+            in_app: true,
+            email: true,
+          };
+          const save = async (next: any) => {
+            await api("/preferences", "PUT", next);
+            setPreferences([
+              ...preferences.filter((p) => p.event !== event),
+              next,
+            ]);
+          };
+          return (
+            <div className="preference-row" key={event}>
+              <strong>{label(event)}</strong>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={pref.in_app}
+                  onChange={(e) => save({ ...pref, in_app: e.target.checked })}
+                />
+                In app
+              </label>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={pref.email}
+                  onChange={(e) => save({ ...pref, email: e.target.checked })}
+                />
+                Email
+              </label>
+            </div>
+          );
+        })}
+      </section>
       {error && <div className="error">{error}</div>}
       <section className="panel">
         <div className="panel-heading">
@@ -281,6 +334,7 @@ const attentionLabels: Record<string, string> = {
 };
 export function Attention({ onOpen }: { onOpen: (id: number) => void }) {
   const [data, setData] = useState<any>({ items: [], total: 0, counts: {} }),
+    [queues, setQueues] = useState<any[]>([]),
     [reason, setReason] = useState(""),
     [mine, setMine] = useState(false),
     [offset, setOffset] = useState(0),
@@ -298,6 +352,9 @@ export function Attention({ onOpen }: { onOpen: (id: number) => void }) {
       }
     }
     load();
+    api("/queues")
+      .then(setQueues)
+      .catch(() => {});
     const t = setInterval(load, 30000);
     return () => clearInterval(t);
   }, [reason, mine, offset]);
@@ -314,6 +371,20 @@ export function Attention({ onOpen }: { onOpen: (id: number) => void }) {
         <Clock3 />
       </div>
       {error && <div className="error">{error}</div>}
+      {!!queues.length && (
+        <section className="panel description">
+          <h2>Shared team queues</h2>
+          <div className="stats attention-stats">
+            {queues.map((queue) => (
+              <div className="stat" key={queue.id}>
+                <div>{queue.name}</div>
+                <strong>{queue.open_count}</strong>
+                <small>Open tickets routed to this group</small>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="stats attention-stats">
         {Object.entries(attentionLabels).map(([key, title]) => (
           <button
@@ -648,6 +719,65 @@ export function ViewTools({
             </option>
           ))}
         </select>
+        <select
+          aria-label="Filter by issue type"
+          value={filters.issue_type_id || ""}
+          onChange={(e) =>
+            change(
+              "issue_type_id",
+              e.target.value ? Number(e.target.value) : null,
+            )
+          }
+        >
+          <option value="">All issue types</option>
+          {catalog.issue_types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by category"
+          value={filters.category_id || ""}
+          onChange={(e) =>
+            change(
+              "category_id",
+              e.target.value ? Number(e.target.value) : null,
+            )
+          }
+        >
+          <option value="">All categories</option>
+          {catalog.categories
+            .filter(
+              (c) =>
+                !c.parent_id &&
+                (!filters.product_id || c.product_id === filters.product_id),
+            )
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+        </select>
+        {staff && (
+          <select
+            aria-label="Filter by agent"
+            value={filters.assignee_id || ""}
+            onChange={(e) =>
+              change(
+                "assignee_id",
+                e.target.value ? Number(e.target.value) : null,
+              )
+            }
+          >
+            <option value="">All agents</option>
+            {catalog.agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        )}
         {staff && (
           <input
             aria-label="Filter by tag"

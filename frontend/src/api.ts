@@ -16,8 +16,32 @@ export type Catalog = {
   products: { id: number; name: string; description: string }[];
   companies: { id: number; name: string }[];
   agents: { id: number; name: string }[];
-  categories: { id: number; name: string; display_name: string; kind: string; incident_type: string; parent_id: number | null; product_id: number }[];
+  categories: {
+    id: number;
+    name: string;
+    display_name: string;
+    kind: string;
+    incident_type: string;
+    parent_id: number | null;
+    product_id: number;
+  }[];
   issue_types: { id: number; name: string; classification: string }[];
+  custom_fields: {
+    id: number;
+    name: string;
+    product_id: number;
+    category_id: number | null;
+    kind: string;
+    field_type: string;
+    required: boolean;
+    options: string[];
+  }[];
+  releases: {
+    id: number;
+    product_id: number;
+    version: string;
+    status: string;
+  }[];
 };
 export type SLACycle = {
   id: number;
@@ -64,6 +88,10 @@ export type Ticket = {
   reproduction?: string;
   affected_version?: string;
   linked_bug_id?: number | null;
+  fixed_release_id?: number | null;
+  fixed_release?: string;
+  custom_values?: Record<string, unknown>;
+  relations?: { ticket_id: number; relation: string; title: string }[];
   sla?: SLACycle[];
   messages?: {
     id: number;

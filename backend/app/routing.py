@@ -5,8 +5,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from . import schemas as s
-from .db import get_db
+from .db import get_db, now
 from .models import (
+    AgentAvailability,
     AssignmentRule,
     Audit,
     IssueCategory,
@@ -30,9 +31,7 @@ def active_agent(db, user_id):
 
 
 def configuration(db):
-    members = db.execute(
-        select(SupportGroupMember.group_id, SupportGroupMember.user_id)
-    ).all()
+    members = db.execute(select(SupportGroupMember.group_id, SupportGroupMember.user_id)).all()
     by_group = {}
     for group_id, user_id in members:
         by_group.setdefault(group_id, []).append(user_id)
@@ -51,7 +50,12 @@ def configuration(db):
             for item in db.scalars(select(IssueCategory).order_by(IssueCategory.name))
         ],
         "issue_types": [
-            {"id": item.id, "name": item.name, "classification": item.classification, "active": item.active}
+            {
+                "id": item.id,
+                "name": item.name,
+                "classification": item.classification,
+                "active": item.active,
+            }
             for item in db.scalars(select(IssueType).order_by(IssueType.name))
         ],
         "groups": [
@@ -109,12 +113,14 @@ def update_category(
 def validate_category(db, data, category_id=None):
     if not db.get(Product, data.product_id):
         raise HTTPException(422, "Unknown product")
-    duplicate = db.scalar(select(IssueCategory).where(
-        IssueCategory.product_id == data.product_id,
-        IssueCategory.parent_id == data.parent_id,
-        func.lower(IssueCategory.name) == data.name.strip().lower(),
-        IssueCategory.id != (category_id or 0),
-    ))
+    duplicate = db.scalar(
+        select(IssueCategory).where(
+            IssueCategory.product_id == data.product_id,
+            IssueCategory.parent_id == data.parent_id,
+            func.lower(IssueCategory.name) == data.name.strip().lower(),
+            IssueCategory.id != (category_id or 0),
+        )
+    )
     if duplicate:
         raise HTTPException(422, "That category name already exists in this product")
     parent_id, kind = data.parent_id, data.kind
@@ -132,7 +138,9 @@ def validate_category(db, data, category_id=None):
 
 
 @router.post("/issue-types", status_code=201)
-def create_issue_type(data: s.IssueTypeInput, user=Depends(require_admin), db: Session = Depends(get_db)):
+def create_issue_type(
+    data: s.IssueTypeInput, user=Depends(require_admin), db: Session = Depends(get_db)
+):
     if db.scalar(select(IssueType).where(func.lower(IssueType.name) == data.name.strip().lower())):
         raise HTTPException(422, "That issue type already exists")
     item = IssueType(**data.model_dump())
@@ -143,7 +151,12 @@ def create_issue_type(data: s.IssueTypeInput, user=Depends(require_admin), db: S
 
 
 @router.patch("/issue-types/{issue_type_id}")
-def update_issue_type(issue_type_id: int, data: s.IssueTypeInput, user=Depends(require_admin), db: Session = Depends(get_db)):
+def update_issue_type(
+    issue_type_id: int,
+    data: s.IssueTypeInput,
+    user=Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     item = db.get(IssueType, issue_type_id)
     if not item:
         raise HTTPException(404, "Issue type not found")
@@ -230,9 +243,11 @@ def assign(db, ticket):
         else None
     )
     if not rule and ticket.subcategory_id and ticket.category_id:
-        rule = db.scalar(select(AssignmentRule).where(
-            AssignmentRule.category_id == ticket.category_id
-        ).with_for_update())
+        rule = db.scalar(
+            select(AssignmentRule)
+            .where(AssignmentRule.category_id == ticket.category_id)
+            .with_for_update()
+        )
     if not rule or rule.strategy == "manual":
         return None
     if rule.strategy == "fixed":
@@ -246,7 +261,13 @@ def assign(db, ticket):
             .where(SupportGroupMember.group_id == rule.group_id, User.active.is_(True))
             .order_by(User.id)
         )
-        if not member.automation and staff(member)
+        if not member.automation
+        and staff(member)
+        and (
+            (availability := db.get(AgentAvailability, member.id)) is None
+            or availability.status in {"available", "busy"}
+            or (availability.until is not None and availability.until <= now())
+        )
     ]
     if not members:
         return None

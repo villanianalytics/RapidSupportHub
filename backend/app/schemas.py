@@ -143,6 +143,7 @@ class TicketCreate(BaseModel):
     issue_type_id: int | None = None
     reproduction: str = Field(default="", max_length=20000)
     affected_version: str = Field(default="", max_length=100)
+    custom_values: dict[str, object] = Field(default_factory=dict)
 
 
 class TicketUpdate(BaseModel):
@@ -155,6 +156,8 @@ class TicketUpdate(BaseModel):
     issue_type_id: int | None = None
     assignee_id: int | None = None
     linked_bug_id: int | None = None
+    fixed_release_id: int | None = None
+    custom_values: dict[str, object] | None = None
     resolution: str | None = Field(default=None, max_length=20000)
     reason: str = Field(default="", max_length=2000)
 
@@ -206,6 +209,10 @@ class ViewConfig(BaseModel):
     severity: Severity | Literal[""] = ""
     product_id: int | None = None
     company_id: int | None = None
+    category_id: int | None = None
+    subcategory_id: int | None = None
+    issue_type_id: int | None = None
+    assignee_id: int | None = None
     tag: str = Field(default="", max_length=40)
     layout: Literal["list", "board"] = "list"
 

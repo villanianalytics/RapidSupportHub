@@ -13,13 +13,15 @@ from threading import Lock
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import delete, inspect, select, text
+from sqlalchemy import delete, inspect, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from . import auditing, sla, workspace
 from . import schemas as s
+from .advanced import apply_automations, start_automation_worker
+from .advanced import router as advanced_router
 from .db import Base, SessionLocal, engine, get_db, now
 from .entra import router as entra_router
 from .mail import router as mail_router
@@ -28,14 +30,19 @@ from .models import (
     Attachment,
     Audit,
     Company,
+    CompanyProduct,
     Credential,
+    CustomField,
     IssueCategory,
     IssueType,
     Message,
     Policy,
     Product,
+    ProductRelease,
     Report,
     Ticket,
+    TicketCustomValue,
+    TicketRelation,
     TicketTag,
     User,
     Watcher,
@@ -81,7 +88,9 @@ async def lifespan(app):
     columns = inspect(engine).get_columns("users")
     if "phone" not in {column["name"] for column in columns}:
         with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(40) NOT NULL DEFAULT ''"))
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN phone VARCHAR(40) NOT NULL DEFAULT ''")
+            )
     columns = inspect(engine).get_columns("tickets")
     if "category_id" not in {column["name"] for column in columns}:
         with engine.begin() as connection:
@@ -92,16 +101,24 @@ async def lifespan(app):
             connection.execute(text("ALTER TABLE tickets ADD COLUMN subcategory_id INTEGER"))
         if "issue_type_id" not in ticket_columns:
             connection.execute(text("ALTER TABLE tickets ADD COLUMN issue_type_id INTEGER"))
+        if "fixed_release_id" not in ticket_columns:
+            connection.execute(text("ALTER TABLE tickets ADD COLUMN fixed_release_id INTEGER"))
     columns = inspect(engine).get_columns("issue_categories")
     if "parent_id" not in {column["name"] for column in columns}:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE issue_categories ADD COLUMN parent_id INTEGER"))
-    if "product_id" not in {column["name"] for column in inspect(engine).get_columns("issue_categories")}:
+    if "product_id" not in {
+        column["name"] for column in inspect(engine).get_columns("issue_categories")
+    }:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE issue_categories ADD COLUMN product_id INTEGER"))
     if engine.dialect.name == "postgresql":
         with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE issue_categories DROP CONSTRAINT IF EXISTS issue_categories_name_key"))
+            connection.execute(
+                text(
+                    "ALTER TABLE issue_categories DROP CONSTRAINT IF EXISTS issue_categories_name_key"
+                )
+            )
     with SessionLocal() as db:
         auditing.initialize(db)
         if not db.scalar(select(User).limit(1)):
@@ -128,6 +145,7 @@ async def lifespan(app):
         if db.new or db.dirty:
             db.commit()
     worker = None
+    automation_worker = start_automation_worker()
     if os.getenv("EMAIL_WORKER_ENABLED", "true").lower() == "true":
         worker = start_worker()
     try:
@@ -137,6 +155,9 @@ async def lifespan(app):
             stop, thread = worker
             stop.set()
             thread.join(timeout=6)
+        stop, thread = automation_worker
+        stop.set()
+        thread.join(timeout=6)
 
 
 app = FastAPI(
@@ -160,6 +181,7 @@ app.include_router(operations_router)
 app.include_router(entra_router)
 app.include_router(mail_router)
 app.include_router(routing_router)
+app.include_router(advanced_router)
 
 
 @app.exception_handler(IntegrityError)
@@ -350,17 +372,52 @@ def catalog(user: User = Depends(identity), db: Session = Depends(get_db)):
         select(Company) if staff(user) else select(Company).where(Company.id == user.company_id)
     ).all()
     users = db.scalars(select(User).where(User.active.is_(True))).all() if staff(user) else []
+    product_query = select(Product).order_by(Product.name)
+    if not staff(user) and user.company_id:
+        entitled = list(
+            db.scalars(
+                select(CompanyProduct.product_id).where(
+                    CompanyProduct.company_id == user.company_id
+                )
+            )
+        )
+        if entitled:
+            product_query = product_query.where(Product.id.in_(entitled))
+    products = list(db.scalars(product_query))
+    product_ids = [product.id for product in products]
     return {
-        "products": [
-            {"id": p.id, "name": p.name, "description": p.description}
-            for p in db.scalars(select(Product).order_by(Product.name))
-        ],
+        "products": [{"id": p.id, "name": p.name, "description": p.description} for p in products],
         "companies": [{"id": c.id, "name": c.name} for c in companies],
         "agents": [{"id": u.id, "name": u.name} for u in users if staff(u)],
         "issue_types": [
             {"id": item.id, "name": item.name, "classification": item.classification}
-            for item in db.scalars(select(IssueType).where(IssueType.active.is_(True)).order_by(IssueType.name))
+            for item in db.scalars(
+                select(IssueType).where(IssueType.active.is_(True)).order_by(IssueType.name)
+            )
         ],
+        "custom_fields": [
+            {
+                "id": f.id,
+                "name": f.name,
+                "product_id": f.product_id,
+                "category_id": f.category_id,
+                "kind": f.kind,
+                "field_type": f.field_type,
+                "required": f.required,
+                "options": f.options,
+            }
+            for f in db.scalars(
+                select(CustomField)
+                .where(CustomField.active.is_(True), CustomField.product_id.in_(product_ids))
+                .order_by(CustomField.name)
+            )
+        ],
+        "releases": [
+            {"id": r.id, "product_id": r.product_id, "version": r.version, "status": r.status}
+            for r in db.scalars(select(ProductRelease).order_by(ProductRelease.id.desc()))
+        ]
+        if staff(user)
+        else [],
         "categories": [
             {
                 "id": item.id,
@@ -377,7 +434,7 @@ def catalog(user: User = Depends(identity), db: Session = Depends(get_db)):
             }
             for item in db.scalars(
                 select(IssueCategory)
-                .where(IssueCategory.active.is_(True), IssueCategory.product_id.is_not(None))
+                .where(IssueCategory.active.is_(True), IssueCategory.product_id.in_(product_ids))
                 .order_by(IssueCategory.name)
             )
         ],
@@ -566,7 +623,7 @@ def ticket_dict(db, ticket, user, detail=False):
         "version",
     ]
     if staff(user):
-        fields += ["reproduction", "affected_version", "linked_bug_id"]
+        fields += ["reproduction", "affected_version", "linked_bug_id", "fixed_release_id"]
     fields += ["category_id", "subcategory_id", "issue_type_id"]
     result = {k: getattr(ticket, k) for k in fields}
     result.update(workspace.organization(db, ticket, user))
@@ -589,8 +646,30 @@ def ticket_dict(db, ticket, user, detail=False):
     issue_type = db.get(IssueType, ticket.issue_type_id) if ticket.issue_type_id else None
     result["category"] = category.name if category else "Legacy / uncategorized"
     result["subcategory"] = subcategory.name if subcategory else ""
-    result["issue_type"] = issue_type.name if issue_type else ticket.incident_type.replace("_", " ").title()
+    result["issue_type"] = (
+        issue_type.name if issue_type else ticket.incident_type.replace("_", " ").title()
+    )
+    result["custom_values"] = {
+        str(value.field_id): value.value
+        for value in db.scalars(
+            select(TicketCustomValue).where(TicketCustomValue.ticket_id == ticket.id)
+        )
+    }
     if staff(user):
+        result["relations"] = [
+            {
+                "ticket_id": relation.target_id,
+                "relation": relation.relation,
+                "title": db.get(Ticket, relation.target_id).title,
+            }
+            for relation in db.scalars(
+                select(TicketRelation).where(TicketRelation.source_id == ticket.id)
+            )
+        ]
+        release = (
+            db.get(ProductRelease, ticket.fixed_release_id) if ticket.fixed_release_id else None
+        )
+        result["fixed_release"] = release.version if release else ""
         result["sla"] = sla.summary(db, ticket)
         result["attention"] = workspace.attention_reasons(db, ticket, result["sla"])
     if detail:
@@ -638,6 +717,10 @@ def list_tickets(
     severity: str = "",
     product_id: int | None = None,
     company_id: int | None = None,
+    category_id: int | None = None,
+    subcategory_id: int | None = None,
+    issue_type_id: int | None = None,
+    assignee_id: int | None = None,
     tag: str = "",
     limit: int = 100,
     offset: int = 0,
@@ -646,7 +729,19 @@ def list_tickets(
 ):
     query = visible_query(user)
     if q:
-        query = query.where(Ticket.title.ilike(f"%{q[:200]}%"))
+        term = f"%{q[:200]}%"
+        message_search = select(Message.ticket_id).where(Message.body.ilike(term))
+        if not staff(user):
+            message_search = message_search.where(Message.internal.is_(False))
+        query = query.where(
+            or_(
+                Ticket.title.ilike(term),
+                Ticket.description.ilike(term),
+                Ticket.resolution.ilike(term),
+                Ticket.affected_version.ilike(term),
+                Ticket.id.in_(message_search),
+            )
+        )
     if kind:
         query = query.where(Ticket.kind == kind)
     if status:
@@ -663,6 +758,14 @@ def list_tickets(
         query = query.where(Ticket.product_id == product_id)
     if company_id:
         query = query.where(Ticket.company_id == company_id)
+    if category_id:
+        query = query.where(Ticket.category_id == category_id)
+    if subcategory_id:
+        query = query.where(Ticket.subcategory_id == subcategory_id)
+    if issue_type_id:
+        query = query.where(Ticket.issue_type_id == issue_type_id)
+    if assignee_id:
+        query = query.where(Ticket.assignee_id == assignee_id)
     if tag:
         if not staff(user):
             raise HTTPException(403, "Tags are internal to staff")
@@ -677,30 +780,82 @@ def list_tickets(
     return [ticket_dict(db, t, user) for t in records]
 
 
+def applicable_fields(db, ticket):
+    return list(
+        db.scalars(
+            select(CustomField).where(
+                CustomField.active.is_(True),
+                CustomField.product_id == ticket.product_id,
+                CustomField.kind.in_([ticket.kind, "both"]),
+                (
+                    CustomField.category_id.is_(None)
+                    | (CustomField.category_id == ticket.category_id)
+                ),
+            )
+        )
+    )
+
+
+def save_custom_values(db, ticket, values):
+    fields = {field.id: field for field in applicable_fields(db, ticket)}
+    normalized = {int(key): value for key, value in (values or {}).items()}
+    unknown = set(normalized) - set(fields)
+    if unknown:
+        raise HTTPException(422, "A custom field does not apply to this ticket")
+    for field in fields.values():
+        value = normalized.get(field.id)
+        if field.required and (value is None or value == ""):
+            raise HTTPException(422, f"{field.name} is required")
+        if value is not None and field.field_type == "select" and value not in field.options:
+            raise HTTPException(422, f"Choose a valid value for {field.name}")
+        if value is not None and value != "" and field.field_type == "number":
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                raise HTTPException(422, f"{field.name} must be a number") from None
+        if value is not None and field.field_type == "checkbox" and not isinstance(value, bool):
+            raise HTTPException(422, f"{field.name} must be checked or unchecked")
+        if value is not None:
+            db.merge(TicketCustomValue(ticket_id=ticket.id, field_id=field.id, value=value))
+
+
 @app.post("/api/tickets", status_code=201)
 def create_ticket(
     data: s.TicketCreate, user: User = Depends(identity), db: Session = Depends(get_db)
 ):
     values = data.model_dump()
+    custom_values = values.pop("custom_values", {})
     if not staff(user):
-        if (
-            data.kind != "support"
-            or data.reproduction
-            or data.affected_version
-        ):
+        if data.kind != "support" or data.reproduction or data.affected_version:
             raise HTTPException(403, "Internal fields require staff access")
         values["company_id"] = user.company_id
     exists(db, Product, data.product_id, "product")
+    if not staff(user) and user.company_id:
+        entitled = list(
+            db.scalars(
+                select(CompanyProduct.product_id).where(
+                    CompanyProduct.company_id == user.company_id
+                )
+            )
+        )
+        if entitled and data.product_id not in entitled:
+            raise HTTPException(403, "Your company does not have access to this product")
     exists(db, Company, values["company_id"], "company")
     if data.kind == "support" and not values["company_id"]:
         raise HTTPException(422, "Support tickets require a client company")
     issue_type = db.get(IssueType, data.issue_type_id) if data.issue_type_id else None
     if not issue_type:
-        issue_type = db.scalar(select(IssueType).where(
-            IssueType.active.is_(True), IssueType.classification == data.incident_type
-        ).order_by(IssueType.id))
+        issue_type = db.scalar(
+            select(IssueType)
+            .where(IssueType.active.is_(True), IssueType.classification == data.incident_type)
+            .order_by(IssueType.id)
+        )
     if not issue_type and data.issue_type_id is None:
-        issue_type = IssueType(name=data.incident_type.replace("_", " ").title(), classification=data.incident_type, active=True)
+        issue_type = IssueType(
+            name=data.incident_type.replace("_", " ").title(),
+            classification=data.incident_type,
+            active=True,
+        )
         db.add(issue_type)
         db.flush()
     if not issue_type or not issue_type.active:
@@ -709,17 +864,30 @@ def create_ticket(
     if not category:
         category = db.scalar(
             select(IssueCategory)
-            .where(IssueCategory.active.is_(True), IssueCategory.product_id == data.product_id,
-                   IssueCategory.parent_id.is_(None), IssueCategory.kind.in_([data.kind, "both"]))
+            .where(
+                IssueCategory.active.is_(True),
+                IssueCategory.product_id == data.product_id,
+                IssueCategory.parent_id.is_(None),
+                IssueCategory.kind.in_([data.kind, "both"]),
+            )
             .order_by(IssueCategory.id)
         )
-    if (not category or category.kind not in {data.kind, "both"} or not category.active
-            or category.product_id != data.product_id or category.parent_id is not None):
+    if (
+        not category
+        or category.kind not in {data.kind, "both"}
+        or not category.active
+        or category.product_id != data.product_id
+        or category.parent_id is not None
+    ):
         raise HTTPException(422, "Choose an active issue category")
     subcategory = db.get(IssueCategory, data.subcategory_id) if data.subcategory_id else None
-    if data.subcategory_id and (not subcategory or not subcategory.active
-            or subcategory.parent_id != category.id or subcategory.product_id != data.product_id
-            or subcategory.kind not in {data.kind, "both"}):
+    if data.subcategory_id and (
+        not subcategory
+        or not subcategory.active
+        or subcategory.parent_id != category.id
+        or subcategory.product_id != data.product_id
+        or subcategory.kind not in {data.kind, "both"}
+    ):
         raise HTTPException(422, "Choose a subcategory within the selected category")
     values["category_id"] = category.id
     values["subcategory_id"] = subcategory.id if subcategory else None
@@ -736,7 +904,9 @@ def create_ticket(
     ticket.sla_config = policy.config if policy else None
     db.add(ticket)
     db.flush()
+    save_custom_values(db, ticket, custom_values)
     ticket.assignee_id = assign_ticket(db, ticket)
+    apply_automations(db, ticket, "created")
     sla.start_cycle(db, ticket, "resolution", ticket.created_at, always=True)
     if ticket.kind == "support":
         sla.start_cycle(db, ticket, "first_response", ticket.created_at, always=True)
@@ -816,11 +986,13 @@ def apply_ticket_update(
         raise HTTPException(409, "This ticket changed. Refresh it and try again.")
     fields = data.model_fields_set - {"version", "reason"}
     if not staff(user):
-        if (
-            fields != {"status"}
-            or ticket.status != "pending_approval"
-            or data.status not in {"closed", "in_progress"}
-        ):
+        custom_field_edit = fields == {"custom_values"} and ticket.status != "closed"
+        approval_edit = (
+            fields == {"status"}
+            and ticket.status == "pending_approval"
+            and data.status in {"closed", "in_progress"}
+        )
+        if not custom_field_edit and not approval_edit:
             raise HTTPException(403, "Customers can approve or reject a proposed resolution")
         if data.status == "in_progress" and not data.reason.strip():
             raise HTTPException(422, "Explain why the resolution is rejected")
@@ -830,8 +1002,13 @@ def apply_ticket_update(
         validate_assignee(db, data.assignee_id)
     if "category_id" in fields:
         category = db.get(IssueCategory, data.category_id)
-        if (not category or not category.active or category.kind not in {ticket.kind, "both"}
-                or category.product_id != ticket.product_id or category.parent_id is not None):
+        if (
+            not category
+            or not category.active
+            or category.kind not in {ticket.kind, "both"}
+            or category.product_id != ticket.product_id
+            or category.parent_id is not None
+        ):
             raise HTTPException(422, "Choose an active issue category")
         if "subcategory_id" not in fields:
             data.subcategory_id = None
@@ -839,9 +1016,13 @@ def apply_ticket_update(
     if "subcategory_id" in fields and data.subcategory_id is not None:
         category_id = data.category_id if "category_id" in fields else ticket.category_id
         subcategory = db.get(IssueCategory, data.subcategory_id)
-        if (not subcategory or not subcategory.active or subcategory.parent_id != category_id
-                or subcategory.product_id != ticket.product_id
-                or subcategory.kind not in {ticket.kind, "both"}):
+        if (
+            not subcategory
+            or not subcategory.active
+            or subcategory.parent_id != category_id
+            or subcategory.product_id != ticket.product_id
+            or subcategory.kind not in {ticket.kind, "both"}
+        ):
             raise HTTPException(422, "Choose a subcategory within the selected category")
     if "issue_type_id" in fields:
         issue_type = db.get(IssueType, data.issue_type_id)
@@ -853,6 +1034,13 @@ def apply_ticket_update(
         bug = db.get(Ticket, data.linked_bug_id)
         if not bug or bug.kind != "bug" or ticket.kind != "support":
             raise HTTPException(422, "Support tickets can link to an internal bug")
+    if "fixed_release_id" in fields and data.fixed_release_id is not None:
+        release = db.get(ProductRelease, data.fixed_release_id)
+        if not release or release.product_id != ticket.product_id:
+            raise HTTPException(422, "Choose a release for this product")
+    if "custom_values" in fields:
+        save_custom_values(db, ticket, data.custom_values or {})
+        fields.remove("custom_values")
     if data.status == "pending_approval" and ticket.kind == "bug":
         raise HTTPException(422, "Internal bugs close without customer approval")
     if (
@@ -875,7 +1063,12 @@ def apply_ticket_update(
     changed_other = False
     for field in fields - {"status"}:
         value = getattr(data, field)
-        if value is None and field not in {"assignee_id", "linked_bug_id", "subcategory_id"}:
+        if value is None and field not in {
+            "assignee_id",
+            "linked_bug_id",
+            "subcategory_id",
+            "fixed_release_id",
+        }:
             raise HTTPException(422, f"{field} cannot be null")
         previous = getattr(ticket, field)
         setattr(ticket, field, value)
@@ -892,6 +1085,7 @@ def apply_ticket_update(
                 workspace.notify(db, ticket, user, "assigned", internal=True)
             else:
                 changed_other = True
+    apply_automations(db, ticket, "updated")
     if changed_other:
         workspace.notify(db, ticket, user, "ticket_updated", internal=ticket.kind == "bug")
     # In-flight SLA targets remain fixed; classification changes cannot erase a breach.
@@ -907,6 +1101,21 @@ def apply_ticket_update(
         public_staff_reply(db, ticket, user, at, schedule_next=False)
     if data.status:
         transition(db, ticket, user, data.status, at)
+        if ticket.kind == "bug" and data.status == "closed":
+            for linked in db.scalars(
+                select(Ticket).where(Ticket.linked_bug_id == ticket.id, Ticket.status != "closed")
+            ):
+                db.add(
+                    Message(
+                        ticket_id=linked.id,
+                        author_id=user.id,
+                        body=f"The linked engineering issue #{ticket.id} has been resolved.",
+                        internal=False,
+                        created_at=at,
+                    )
+                )
+                linked.updated_at = at
+                workspace.notify(db, linked, user, "ticket_updated")
     if data.reason.strip():
         db.add(Message(ticket_id=ticket.id, author_id=user.id, body=data.reason, created_at=at))
         if not staff(user) and ticket.status == "in_progress":

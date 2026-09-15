@@ -16,6 +16,47 @@ export type Guide = {
 
 export const guides: Guide[] = [
   {
+    id: "workflow-controls",
+    title: "Configure access, forms, automation, and releases",
+    category: "Administration",
+    audience: "admin",
+    summary:
+      "Control product access, collect product-specific data, route work, automate escalation, and publish releases.",
+    keywords:
+      "entitlement custom field queue availability automation escalation release relationship",
+    sections: [
+      {
+        title: "Client and product access",
+        text: [
+          "Open Settings and choose Workflow controls. Select the products available to each client company. A company with no selections retains access to every product for migration compatibility; once any product is selected, its customers only see those products and their tickets.",
+        ],
+      },
+      {
+        title: "Configurable forms",
+        steps: [
+          "Add a custom field and choose its product, optional category, ticket or issue applicability, type, and whether it is required.",
+          "For a select field, enter the allowed values separated by commas.",
+          "The field appears when a submitter chooses the matching product and category. The API validates required fields and allowed values too.",
+        ],
+      },
+      {
+        title: "Queues and escalation",
+        text: [
+          "Categories and assignment connects work to support groups. Agents can see shared queue counts under Attention needed. Away and out-of-office agents are skipped by automatic routing.",
+          "Automation rules run when tickets are created or updated. SLA-risk and inactivity rules are evaluated by the background worker. Conditions and actions are explicit JSON field/value pairs and every applied rule is audited.",
+        ],
+      },
+      {
+        title: "Releases and related work",
+        text: [
+          "Create planned product releases, assign an issue to its fixed release, and link tickets or issues with Related, Blocks, Caused by, or Duplicates relationships.",
+          "Publishing a release adds its release note to linked customer tickets and sends notifications according to each recipient’s preferences. Closing an internal issue posts a safe resolution update to its linked support tickets.",
+        ],
+      },
+    ],
+    related: ["workspace", "notifications", "find-tickets", "audit"],
+  },
+  {
     id: "email",
     title: "Connect Amazon SES for outbound email",
     category: "Administration",

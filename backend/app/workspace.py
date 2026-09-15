@@ -3,7 +3,17 @@
 from sqlalchemy import select
 
 from . import sla
-from .models import Cycle, Message, Notification, Ticket, TicketDuplicate, TicketTag, User, Watcher
+from .models import (
+    Cycle,
+    Message,
+    Notification,
+    NotificationPreference,
+    Ticket,
+    TicketDuplicate,
+    TicketTag,
+    User,
+    Watcher,
+)
 from .security import staff, visible_query
 
 
@@ -12,12 +22,15 @@ def can_read(db, user, ticket_id):
 
 
 def add_notification(db, recipient, ticket, kind, internal=False):
-    db.add(
-        Notification(user_id=recipient.id, ticket_id=ticket.id, kind=kind, internal=internal)
-    )
+    preference = db.get(NotificationPreference, (recipient.id, kind))
+    if not preference or preference.in_app:
+        db.add(
+            Notification(user_id=recipient.id, ticket_id=ticket.id, kind=kind, internal=internal)
+        )
     from .mail import queue_delivery
 
-    queue_delivery(db, recipient, ticket, kind, internal)
+    if not preference or preference.email:
+        queue_delivery(db, recipient, ticket, kind, internal)
 
 
 def notify(db, ticket, actor, kind, internal=False, extra_recipients=()):

@@ -77,6 +77,7 @@ class Ticket(Base):
     affected_version: Mapped[str] = mapped_column(String(100), default="")
     resolution: Mapped[str] = mapped_column(Text, default="")
     linked_bug_id: Mapped[int | None] = mapped_column(ForeignKey("tickets.id"))
+    fixed_release_id: Mapped[int | None] = mapped_column(ForeignKey("product_releases.id"))
     sla_config: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -171,7 +172,9 @@ class EmailDelivery(Base):
 
 class IssueCategory(Base):
     __tablename__ = "issue_categories"
-    __table_args__ = (UniqueConstraint("product_id", "parent_id", "name", name="uq_issue_category_scope"),)
+    __table_args__ = (
+        UniqueConstraint("product_id", "parent_id", "name", name="uq_issue_category_scope"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     kind: Mapped[str] = mapped_column(String(20), default="both")
@@ -228,6 +231,74 @@ class SavedView(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(100))
     config: Mapped[dict] = mapped_column(JSON)
+
+
+class CompanyProduct(Base):
+    __tablename__ = "company_products"
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), primary_key=True)
+
+
+class CustomField(Base):
+    __tablename__ = "custom_fields"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("issue_categories.id"))
+    kind: Mapped[str] = mapped_column(String(20), default="both")
+    field_type: Mapped[str] = mapped_column(String(20), default="text")
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    options: Mapped[list] = mapped_column(JSON, default=list)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class TicketCustomValue(Base):
+    __tablename__ = "ticket_custom_values"
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)
+    field_id: Mapped[int] = mapped_column(ForeignKey("custom_fields.id"), primary_key=True)
+    value: Mapped[object] = mapped_column(JSON)
+
+
+class AgentAvailability(Base):
+    __tablename__ = "agent_availability"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(20), default="available")
+    until: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    trigger: Mapped[str] = mapped_column(String(30), default="created")
+    conditions: Mapped[dict] = mapped_column(JSON, default=dict)
+    actions: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    event: Mapped[str] = mapped_column(String(40), primary_key=True)
+    in_app: Mapped[bool] = mapped_column(Boolean, default=True)
+    email: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProductRelease(Base):
+    __tablename__ = "product_releases"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    version: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(20), default="planned")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    released_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class TicketRelation(Base):
+    __tablename__ = "ticket_relations"
+    source_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)
+    relation: Mapped[str] = mapped_column(String(30), primary_key=True, default="related")
 
 
 class EntraConnection(Base):

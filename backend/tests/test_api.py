@@ -854,9 +854,7 @@ def test_notification_email_queue_delivery_and_permission_recheck(setup, monkeyp
     created = ticket(client, company, product, headers=users["alice"])
     with SessionLocal() as db:
         queued = list(
-            db.scalars(
-                select(EmailDelivery).where(EmailDelivery.ticket_id == created["id"])
-            )
+            db.scalars(select(EmailDelivery).where(EmailDelivery.ticket_id == created["id"]))
         )
         assert {item.user_id for item in queued} == {users["alice_id"]}
         assert all(item.kind == "ticket_created" for item in queued)
@@ -893,7 +891,9 @@ def test_profiles_categories_and_assignment_rules(setup):
     catalog = client.get("/api/catalog").json()
     issue_types = {item["name"] for item in catalog["issue_types"]}
     assert {"Bug", "Question", "Enhancement"} <= issue_types
-    dev = next(item for item in client.get("/api/admin/users").json() if item["id"] == users["dev_id"])
+    dev = next(
+        item for item in client.get("/api/admin/users").json() if item["id"] == users["dev_id"]
+    )
     updated = client.patch(
         f"/api/admin/users/{users['dev_id']}",
         json={
@@ -928,7 +928,9 @@ def test_profiles_categories_and_assignment_rules(setup):
     )
     assert child_result.status_code == 201
     child = next(
-        item for item in child_result.json()["categories"] if item["name"] == "Excel workbook import"
+        item
+        for item in child_result.json()["categories"]
+        if item["name"] == "Excel workbook import"
     )
     assert child["parent_id"] == category["id"]
     assert (
@@ -948,7 +950,9 @@ def test_profiles_categories_and_assignment_rules(setup):
     with SessionLocal() as db:
         assert db.get(IssueCategory, category["id"])
     child_catalog = next(
-        item for item in client.get("/api/catalog").json()["categories"] if item["id"] == child["id"]
+        item
+        for item in client.get("/api/catalog").json()["categories"]
+        if item["id"] == child["id"]
     )
     assert child_catalog["display_name"] == "Data › Excel workbook import"
 
@@ -1004,3 +1008,92 @@ def test_profiles_categories_and_assignment_rules(setup):
     assert agent_attempt.status_code == 403
     with SessionLocal() as db:
         assert db.get(SupportGroup, group["id"])
+
+
+def test_entitlements_custom_fields_automation_search_and_releases(setup):
+    client, company, _, product, users = setup
+    second = client.post("/api/admin/products", json={"name": "Second Product"}).json()["id"]
+    access = client.put(f"/api/admin/companies/{company}/products", json={"product_ids": [product]})
+    assert access.status_code == 200
+    customer_catalog = client.get("/api/catalog", headers=users["alice"]).json()
+    assert [item["id"] for item in customer_catalog["products"]] == [product]
+    forbidden = client.post(
+        "/api/tickets",
+        headers=users["alice"],
+        json={"title": "Hidden product", "description": "No access", "product_id": second},
+    )
+    assert forbidden.status_code == 403
+
+    field = client.post(
+        "/api/admin/custom-fields",
+        json={
+            "name": "Environment",
+            "product_id": product,
+            "field_type": "select",
+            "required": True,
+            "options": ["Production", "Test"],
+        },
+    ).json()
+    assert field["name"] == "Environment"
+    automation = client.post(
+        "/api/admin/automations",
+        json={
+            "name": "Escalate production Sev 1",
+            "trigger": "created",
+            "conditions": {"severity": "sev1", "product_id": product},
+            "actions": {"status": "in_progress"},
+        },
+    )
+    assert automation.status_code == 201
+    catalog = client.get("/api/catalog").json()
+    category = next(
+        c for c in catalog["categories"] if c["product_id"] == product and not c["parent_id"]
+    )
+    issue_type = next(t for t in catalog["issue_types"] if t["name"] == "Question")
+    created = client.post(
+        "/api/tickets",
+        json={
+            "title": "Production export",
+            "description": "Initial symptom",
+            "kind": "support",
+            "company_id": company,
+            "product_id": product,
+            "category_id": category["id"],
+            "issue_type_id": issue_type["id"],
+            "severity": "sev1",
+            "custom_values": {str(field["id"]): "Production"},
+        },
+    ).json()
+    assert created["status"] == "in_progress"
+    assert created["custom_values"][str(field["id"])] == "Production"
+    assert (
+        client.post(
+            f"/api/tickets/{created['id']}/messages",
+            json={"body": "Unique searchable response phrase", "internal": False},
+        ).status_code
+        == 201
+    )
+    assert [t["id"] for t in client.get("/api/tickets?q=searchable%20response").json()] == [
+        created["id"]
+    ]
+
+    release_id = client.post(
+        "/api/admin/releases",
+        json={"product_id": product, "version": "2.0.0", "status": "planned", "notes": ""},
+    ).json()["id"]
+    current = client.get(f"/api/tickets/{created['id']}").json()
+    updated = client.patch(
+        f"/api/tickets/{created['id']}",
+        json={"version": current["version"], "fixed_release_id": release_id},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["fixed_release"] == "2.0.0"
+    assert (
+        client.put(
+            "/api/preferences",
+            headers=users["alice"],
+            json={"event": "ticket_updated", "in_app": True, "email": False},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/preferences", headers=users["alice"]).json()[0]["email"] is False
