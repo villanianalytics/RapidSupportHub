@@ -782,7 +782,7 @@ test("searchable help, contextual guides and mobile customer topics", async ({
     .fill("Changed-local-e2e-456!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Help center", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("22 guides");
+  await expect(page.getByRole("status")).toContainText("23 guides");
   await page.getByLabel("Search help").fill("reproduction");
   await page
     .getByRole("button", { name: /Log and resolve internal bugs/ })
