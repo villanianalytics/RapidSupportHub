@@ -1622,6 +1622,7 @@ function TicketDetail({
     [internal, setInternal] = useState(false),
     [body, setBody] = useState(""),
     [resolution, setResolution] = useState(t.resolution),
+    [resolveOpen, setResolveOpen] = useState(false),
     [audit, setAudit] = useState(false),
     [nextStatus, setNextStatus] = useState(requestedStatus || t.status);
   useEffect(() => {
@@ -1636,11 +1637,13 @@ function TicketDetail({
       onChange(
         await api(`/tickets/${t.id}`, "PATCH", { version: t.version, ...data }),
       );
+      return true;
     } catch (e) {
       setError((e as Error).message);
       try {
         onChange(await api(`/tickets/${t.id}`));
       } catch {}
+      return false;
     } finally {
       setBusy(false);
     }
@@ -1669,8 +1672,60 @@ function TicketDetail({
             </p>
           )}
         </div>
-        <Badge status={t.status} />
+        <div className="detail-heading-actions">
+          <Badge status={t.status} />
+          {staff &&
+            t.kind === "support" &&
+            !["pending_approval", "closed"].includes(t.status) && (
+              <button
+                className="primary"
+                onClick={() => setResolveOpen(true)}
+              >
+                <Check size={16} />
+                Resolve ticket
+              </button>
+            )}
+        </div>
       </div>
+      {resolveOpen && (
+        <Modal title={`Resolve ticket #${t.id}`} onClose={() => setResolveOpen(false)}>
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (await patch({ status: "pending_approval", resolution }))
+                setResolveOpen(false);
+            }}
+          >
+            <p className="muted">
+              Explain the solution for the customer. The ticket will move to
+              customer approval before it is closed.
+            </p>
+            <Field label="Resolution">
+              <textarea
+                rows={6}
+                required
+                autoFocus
+                placeholder="Explain the fix or solution"
+                value={resolution}
+                onChange={(event) => setResolution(event.target.value)}
+              />
+            </Field>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setResolveOpen(false)}
+              >
+                Cancel
+              </button>
+              <button className="primary" disabled={busy}>
+                <Check size={16} />
+                {busy ? "Proposing…" : "Propose resolution"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {error && (
         <div className="error" role="alert">
           {error}

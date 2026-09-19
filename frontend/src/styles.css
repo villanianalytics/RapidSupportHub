@@ -1059,6 +1059,13 @@ td small span {
 .detail-heading p span {
   margin: 0 7px;
 }
+.detail-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 .detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
