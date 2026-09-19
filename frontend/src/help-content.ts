@@ -460,7 +460,7 @@ export const guides: Guide[] = [
         steps: [
           "Open Support tickets. Use Assigned to me or the available filters to find work.",
           "Open a ticket and use Ticket details to set its issue type, product category, optional subcategory, severity, or assignee. Assignment requires the Ticket assigner permission or Administrator role.",
-          "Choose a status under Move to status and select Save status & resolution. Add public replies to keep the customer informed; use Private note for internal discussion.",
+          "Choose a status under Move to status. To resolve a support ticket, enter the resolution, choose Resolved · pending customer approval, and select Propose resolution. Add public replies to keep the customer informed; use Private note for internal discussion.",
         ],
       },
       {

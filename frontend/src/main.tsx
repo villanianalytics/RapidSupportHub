@@ -2054,7 +2054,10 @@ function TicketDetail({
                   >
                     {statuses
                       .filter(
-                        (s) => t.kind !== "bug" || s !== "pending_approval",
+                        (s) =>
+                          t.kind === "bug"
+                            ? s !== "pending_approval"
+                            : s !== "closed" || t.status === "pending_approval",
                       )
                       .map((s) => (
                         <option key={s} value={s}>
@@ -2076,7 +2079,9 @@ function TicketDetail({
                   disabled={busy}
                   onClick={() => patch({ status: nextStatus, resolution })}
                 >
-                  Save status & resolution
+                  {t.kind === "support" && nextStatus === "pending_approval"
+                    ? "Propose resolution"
+                    : "Save status & resolution"}
                 </button>
                 {t.kind === "support" && (
                   <form

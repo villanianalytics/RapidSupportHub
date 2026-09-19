@@ -172,7 +172,7 @@ export const label = (s: string) =>
     started: "Started",
     in_progress: "In progress",
     waiting_customer: "Waiting on customer",
-    pending_approval: "Pending approval",
+    pending_approval: "Resolved · pending customer approval",
     closed: "Closed",
     sev1: "Sev 1 · Critical",
     sev2: "Sev 2 · High",

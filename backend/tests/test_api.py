@@ -449,6 +449,26 @@ def test_resolution_approval_rejection_and_concurrency(setup):
     assert client.post(url + "/messages", json={"body": "late"}).status_code == 422
 
 
+def test_staff_direct_close_with_resolution_proposes_customer_approval(setup):
+    client, company, _, product, users = setup
+    policy(client, company)
+    t = ticket(client, company, product, headers=users["alice"])
+    resolved = client.patch(
+        f"/api/tickets/{t['id']}",
+        json={
+            "version": t["version"],
+            "status": "closed",
+            "resolution": "Restarted the failed data refresh",
+        },
+    ).json()
+    assert resolved["status"] == "pending_approval"
+    assert resolved["resolution"] == "Restarted the failed data refresh"
+    assert any(
+        message["body"] == "Resolution proposed:\nRestarted the failed data refresh"
+        for message in resolved["messages"]
+    )
+
+
 def test_reports_and_api_keys_obey_permissions(setup):
     client, company, other, product, users = setup
     ticket(client, company, product, headers=users["alice"])

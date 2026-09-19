@@ -1048,8 +1048,11 @@ def apply_ticket_update(
         and ticket.kind == "support"
         and data.status == "closed"
         and ticket.status != "pending_approval"
+        and (data.resolution or ticket.resolution).strip()
     ):
-        raise HTTPException(422, "Propose a resolution before closing a support ticket")
+        # Staff propose support resolutions for customer approval. Treat a direct
+        # close with resolution as that proposal so the resolution is not lost.
+        data.status = "pending_approval"
     at = now()
     ticket.updated_at = at
     resolving = data.status in {"pending_approval", "closed"} and ticket.status not in {
@@ -1057,7 +1060,7 @@ def apply_ticket_update(
         "closed",
     }
     if resolving and not (data.resolution or ticket.resolution).strip():
-        raise HTTPException(422, "Provide a resolution before resolving the ticket")
+        raise HTTPException(422, "Enter a resolution before proposing it to the customer")
     if resolving and user.automation and ticket.kind == "support":
         raise HTTPException(403, "A human must propose the customer resolution")
     changed_other = False
