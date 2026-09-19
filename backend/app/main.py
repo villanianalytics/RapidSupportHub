@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import math
 import os
 import secrets
@@ -8,7 +9,8 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, Thread
+from types import SimpleNamespace
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +48,7 @@ from .models import (
     TicketTag,
     User,
     Watcher,
+    WorkspaceConfiguration,
 )
 from .operations import router as operations_router
 from .routing import assign as assign_ticket
@@ -60,6 +63,8 @@ from .security import (
     ticket_access,
     visible_query,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def seed_product_categories(db, product_id):
@@ -103,6 +108,20 @@ async def lifespan(app):
             connection.execute(text("ALTER TABLE tickets ADD COLUMN issue_type_id INTEGER"))
         if "fixed_release_id" not in ticket_columns:
             connection.execute(text("ALTER TABLE tickets ADD COLUMN fixed_release_id INTEGER"))
+        if "resolution_proposed_at" not in ticket_columns:
+            connection.execute(text("ALTER TABLE tickets ADD COLUMN resolution_proposed_at TIMESTAMP"))
+            connection.execute(
+                text(
+                    "UPDATE tickets SET resolution_proposed_at = updated_at "
+                    "WHERE status = 'pending_approval'"
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_tickets_resolution_proposed_at "
+                "ON tickets (resolution_proposed_at)"
+            )
+        )
     columns = inspect(engine).get_columns("issue_categories")
     if "parent_id" not in {column["name"] for column in columns}:
         with engine.begin() as connection:
@@ -139,13 +158,16 @@ async def lifespan(app):
             )
             db.commit()
         seed_issue_types(db)
+        workspace_configuration(db)
         db.flush()
         for product in db.scalars(select(Product)):
             seed_product_categories(db, product.id)
-        if db.new or db.dirty:
-            db.commit()
+        db.commit()
     worker = None
     automation_worker = start_automation_worker()
+    resolution_worker = None
+    if os.getenv("RESOLUTION_WORKER_ENABLED", "true").lower() == "true":
+        resolution_worker = start_resolution_approval_worker()
     if os.getenv("EMAIL_WORKER_ENABLED", "true").lower() == "true":
         worker = start_worker()
     try:
@@ -158,6 +180,10 @@ async def lifespan(app):
         stop, thread = automation_worker
         stop.set()
         thread.join(timeout=6)
+        if resolution_worker:
+            stop, thread = resolution_worker
+            stop.set()
+            thread.join(timeout=6)
 
 
 app = FastAPI(
@@ -246,6 +272,100 @@ def user_dict(user):
 def require_reports(user):
     if not (admin(user) or user.manage_reports):
         raise HTTPException(403, "Manage reports permission required")
+
+
+def workspace_configuration(db):
+    record = db.get(WorkspaceConfiguration, 1)
+    if not record:
+        record = WorkspaceConfiguration(id=1, approval_timeout_days=7)
+        db.add(record)
+        db.flush()
+    return record
+
+
+def close_expired_resolutions(db, at=None):
+    at = at or now()
+    timeout_days = workspace_configuration(db).approval_timeout_days
+    cutoff = at - timedelta(days=timeout_days)
+    expired = list(
+        db.scalars(
+            select(Ticket).where(
+                Ticket.kind == "support",
+                Ticket.status == "pending_approval",
+                Ticket.resolution_proposed_at.is_not(None),
+                Ticket.resolution_proposed_at <= cutoff,
+            )
+        )
+    )
+    system_actor = SimpleNamespace(id=-1)
+    for ticket in expired:
+        ticket.status = "closed"
+        ticket.updated_at = at
+        db.add(
+            auditing.entry(
+                "ticket_auto_closed",
+                "tickets",
+                ticket.id,
+                {
+                    "approval_timeout_days": timeout_days,
+                    "resolution_proposed_at": ticket.resolution_proposed_at.isoformat(),
+                },
+                outcome="success",
+            )
+        )
+        workspace.notify(db, ticket, system_actor, "status_changed")
+    db.commit()
+    return len(expired)
+
+
+def start_resolution_approval_worker():
+    stop = Event()
+
+    def run():
+        while not stop.wait(60):
+            try:
+                with SessionLocal() as db:
+                    close_expired_resolutions(db)
+            except Exception:
+                logger.exception("Could not process expired customer approvals")
+
+    thread = Thread(target=run, name="rsh-resolution-approval", daemon=True)
+    thread.start()
+    return stop, thread
+
+
+@app.get("/api/admin/workspace-settings")
+def get_workspace_configuration(
+    user: User = Depends(require_admin), db: Session = Depends(get_db)
+):
+    record = workspace_configuration(db)
+    db.commit()
+    return {"approval_timeout_days": record.approval_timeout_days}
+
+
+@app.put("/api/admin/workspace-settings")
+def save_workspace_configuration(
+    data: s.WorkspaceConfigurationInput,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    record = workspace_configuration(db)
+    previous = record.approval_timeout_days
+    record.approval_timeout_days = data.approval_timeout_days
+    record.updated_at = now()
+    audit(
+        db,
+        user,
+        "workspace_settings_saved",
+        details={
+            "approval_timeout_days": {
+                "from": previous,
+                "to": data.approval_timeout_days,
+            }
+        },
+    )
+    db.commit()
+    return {"approval_timeout_days": record.approval_timeout_days}
 
 
 def exists(db, model, record_id, label):
@@ -618,6 +738,7 @@ def ticket_dict(db, ticket, user, detail=False):
         "creator_id",
         "assignee_id",
         "resolution",
+        "resolution_proposed_at",
         "created_at",
         "updated_at",
         "version",
@@ -626,6 +747,12 @@ def ticket_dict(db, ticket, user, detail=False):
         fields += ["reproduction", "affected_version", "linked_bug_id", "fixed_release_id"]
     fields += ["category_id", "subcategory_id", "issue_type_id"]
     result = {k: getattr(ticket, k) for k in fields}
+    result["approval_due_at"] = (
+        ticket.resolution_proposed_at
+        + timedelta(days=workspace_configuration(db).approval_timeout_days)
+        if ticket.status == "pending_approval" and ticket.resolution_proposed_at
+        else None
+    )
     result.update(workspace.organization(db, ticket, user))
     creator = db.get(User, ticket.creator_id)
     result["creator"] = creator.name
@@ -938,6 +1065,10 @@ def transition(db, ticket, user, status, at):
     if old == status:
         return
     ticket.status = status
+    if status == "pending_approval":
+        ticket.resolution_proposed_at = at
+    elif old == "pending_approval" and status != "closed":
+        ticket.resolution_proposed_at = None
     audit(db, user, "status_changed", ticket, {"from": old, "to": status}, at)
     workspace.notify(
         db, ticket, user, "approval_requested" if status == "pending_approval" else "status_changed"

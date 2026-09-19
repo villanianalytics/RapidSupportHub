@@ -10,11 +10,12 @@ os.environ["DATABASE_URL"] = test_url or "sqlite:///" + str(Path(tempfile.mkdtem
 os.environ["ADMIN_PASSWORD"] = "Test-only-initial-123!"
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp()
 os.environ["EMAIL_WORKER_ENABLED"] = "false"
+os.environ["RESOLUTION_WORKER_ENABLED"] = "false"
 
 import pytest
 from app.db import Base, SessionLocal, engine, now
-from app.main import app, attempts
-from app.models import Audit, Cycle, Ticket, User
+from app.main import app, attempts, close_expired_resolutions
+from app.models import Audit, AuditEvent, Cycle, Ticket, User
 from app.security import issue
 from app.sla import calendar_minutes, elapsed
 from fastapi.testclient import TestClient
@@ -467,6 +468,57 @@ def test_staff_direct_close_with_resolution_proposes_customer_approval(setup):
         message["body"] == "Resolution proposed:\nRestarted the failed data refresh"
         for message in resolved["messages"]
     )
+
+
+def test_customer_approval_timeout_configuration_and_auto_close(setup):
+    client, company, _, product, users = setup
+    assert client.get("/api/admin/workspace-settings").json() == {
+        "approval_timeout_days": 7
+    }
+    assert (
+        client.put(
+            "/api/admin/workspace-settings", json={"approval_timeout_days": 3}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get("/api/admin/workspace-settings", headers=users["alice"]).status_code
+        == 403
+    )
+    assert (
+        client.put(
+            "/api/admin/workspace-settings", json={"approval_timeout_days": 0}
+        ).status_code
+        == 422
+    )
+    t = ticket(client, company, product, headers=users["alice"])
+    resolved = client.patch(
+        f"/api/tickets/{t['id']}",
+        json={
+            "version": t["version"],
+            "status": "pending_approval",
+            "resolution": "Corrected the source mapping",
+        },
+    ).json()
+    assert resolved["resolution_proposed_at"]
+    assert resolved["approval_due_at"]
+    with SessionLocal() as db:
+        record = db.get(Ticket, t["id"])
+        record.resolution_proposed_at = now() - timedelta(days=4)
+        db.commit()
+        assert close_expired_resolutions(db) == 1
+        db.refresh(record)
+        assert record.status == "closed"
+        event = db.scalar(
+            select(AuditEvent)
+            .where(
+                AuditEvent.action == "ticket_auto_closed",
+                AuditEvent.resource_id == str(t["id"]),
+            )
+            .order_by(AuditEvent.id.desc())
+        )
+        assert event and event.actor == "System / maintenance"
+        assert event.details["approval_timeout_days"] == 3
 
 
 def test_reports_and_api_keys_obey_permissions(setup):

@@ -51,6 +51,10 @@ class Named(BaseModel):
     description: str = Field(default="", max_length=2000)
 
 
+class WorkspaceConfigurationInput(BaseModel):
+    approval_timeout_days: int = Field(ge=1, le=365)
+
+
 class CategoryInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     kind: Literal["support", "bug", "both"] = "both"

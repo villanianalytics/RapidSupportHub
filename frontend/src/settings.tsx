@@ -80,20 +80,25 @@ export function Admin({
     [busy, setBusy] = useState(false),
     [token, setToken] = useState(""),
     [company, setCompany] = useState(""),
+    [workspaceSettings, setWorkspaceSettings] = useState({
+      approval_timeout_days: 7,
+    }),
     [config, setConfig] = useState<any>(structuredClone(defaultConfig)),
     [policyName, setPolicyName] = useState("Standard support"),
     [editUser, setEditUser] = useState<User | null>(null),
     [resetUser, setResetUser] = useState<User | null>(null),
     [newRoles, setNewRoles] = useState<string[]>(["agent"]);
   async function load() {
-    const [u, p, k] = await Promise.all([
+    const [u, p, k, workspace] = await Promise.all([
       api<User[]>("/admin/users"),
       api("/admin/policies"),
       api("/admin/keys"),
+      api<{ approval_timeout_days: number }>("/admin/workspace-settings"),
     ]);
     setUsers(u);
     setPolicies(p);
     setKeys(k);
+    setWorkspaceSettings(workspace);
   }
   useEffect(() => {
     load().catch((e) => setError(e.message));
@@ -215,6 +220,41 @@ export function Admin({
       )}
       {tab === "workspace" && (
         <div className="settings-grid">
+          <section className="panel description">
+            <h2>Customer resolution approval</h2>
+            <p className="muted">
+              Automatically close resolved support tickets when the customer
+              does not approve or reject the proposed resolution in time.
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                execute(
+                  () =>
+                    api("/admin/workspace-settings", "PUT", workspaceSettings),
+                  "Customer approval timeout saved.",
+                );
+              }}
+            >
+              <Field label="Days before automatic closure">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  required
+                  value={workspaceSettings.approval_timeout_days}
+                  onChange={(event) =>
+                    setWorkspaceSettings({
+                      approval_timeout_days: Number(event.target.value),
+                    })
+                  }
+                />
+              </Field>
+              <button className="primary" disabled={busy}>
+                Save approval timeout
+              </button>
+            </form>
+          </section>
           {(["products", "companies"] as const).map((entity) => (
             <section className="panel description" key={entity}>
               <h2>

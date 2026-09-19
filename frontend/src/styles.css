@@ -938,6 +938,15 @@ td small span {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.approval-deadline {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.approval-deadline svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
 .error {
   background: #fff0ec;
   color: #af4f43;

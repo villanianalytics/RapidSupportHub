@@ -1731,6 +1731,16 @@ function TicketDetail({
           {error}
         </div>
       )}
+      {t.status === "pending_approval" && t.approval_due_at && (
+        <div className="success approval-deadline" role="status">
+          <Clock3 size={17} />
+          <span>
+            Waiting for customer approval. This ticket will close automatically
+            on <strong>{date(t.approval_due_at)}</strong> if the customer does
+            not approve or reject the resolution.
+          </span>
+        </div>
+      )}
       <div className="detail-layout">
         <div>
           <section className="panel description">

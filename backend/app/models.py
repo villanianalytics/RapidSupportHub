@@ -76,6 +76,7 @@ class Ticket(Base):
     reproduction: Mapped[str] = mapped_column(Text, default="")
     affected_version: Mapped[str] = mapped_column(String(100), default="")
     resolution: Mapped[str] = mapped_column(Text, default="")
+    resolution_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     linked_bug_id: Mapped[int | None] = mapped_column(ForeignKey("tickets.id"))
     fixed_release_id: Mapped[int | None] = mapped_column(ForeignKey("product_releases.id"))
     sla_config: Mapped[dict | None] = mapped_column(JSON)
@@ -341,6 +342,13 @@ class SMTPConfiguration(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     last_tested_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_test_ok: Mapped[bool | None] = mapped_column(Boolean)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class WorkspaceConfiguration(Base):
+    __tablename__ = "workspace_configuration"
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    approval_timeout_days: Mapped[int] = mapped_column(Integer, default=7)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

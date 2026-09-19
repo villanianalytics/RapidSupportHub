@@ -77,6 +77,8 @@ export type Ticket = {
   creator_id: number;
   assignee_id: number | null;
   resolution: string;
+  resolution_proposed_at?: string | null;
+  approval_due_at?: string | null;
   created_at: string;
   updated_at: string;
   version: number;

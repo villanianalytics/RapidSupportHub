@@ -256,7 +256,7 @@ export const guides: Guide[] = [
       {
         title: "Pending approval",
         text: [
-          "When a staff member proposes a resolution, the support ticket moves to Pending approval. Read the resolution and try the suggested fix.",
+          "When a staff member proposes a resolution, the support ticket moves to Pending approval. Read the resolution and try the suggested fix. The ticket shows the date when it will close automatically if no decision is made.",
         ],
       },
       {
@@ -272,7 +272,7 @@ export const guides: Guide[] = [
         text: [
           "Resolution timing stops when staff propose the resolution. If the ticket reopens, timing resumes; the period spent awaiting approval or closed is excluded. Internal bugs are closed by staff and do not need customer approval.",
         ],
-        note: "Customers can approve or reject while the ticket is Pending approval. If a ticket is already closed, ask the support team for help with reopening it.",
+        note: "Customers can approve or reject while the ticket is Pending approval. Administrators configure the automatic closure period under Settings → Workspace. If a ticket is already closed, ask the support team for help with reopening it.",
       },
     ],
     related: ["conversation", "notifications"],
