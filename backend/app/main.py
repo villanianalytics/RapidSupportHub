@@ -839,6 +839,7 @@ def list_tickets(
     q: str = "",
     kind: str | None = None,
     status: str | None = None,
+    include_closed: bool = True,
     mine: bool = False,
     watching: bool = False,
     severity: str = "",
@@ -873,6 +874,8 @@ def list_tickets(
         query = query.where(Ticket.kind == kind)
     if status:
         query = query.where(Ticket.status == status)
+    elif not include_closed:
+        query = query.where(Ticket.status != "closed")
     if mine:
         query = query.where((Ticket.assignee_id if staff(user) else Ticket.creator_id) == user.id)
     if watching:

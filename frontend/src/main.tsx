@@ -345,10 +345,12 @@ function App() {
   const refresh = useCallback(async () => {
     if (!user || user.must_change_password) return;
     try {
+      const exactStatus = statuses.includes(status) ? status : "";
+      const includeClosed = page !== "tickets" || status !== "active";
       const [c, t, o] = await Promise.all([
         api<Catalog>("/catalog"),
         api<Ticket[]>(
-          `/tickets?q=${encodeURIComponent(search)}&kind=${page === "bugs" ? "bug" : page === "tickets" ? "support" : ""}&status=${status}&mine=${mine}&offset=${offset}&${new URLSearchParams(
+          `/tickets?q=${encodeURIComponent(search)}&kind=${page === "bugs" ? "bug" : page === "tickets" ? "support" : ""}&status=${exactStatus}&include_closed=${includeClosed}&mine=${mine}&offset=${offset}&${new URLSearchParams(
             Object.entries(filters)
               .filter(
                 ([k, v]) =>
@@ -483,7 +485,7 @@ function App() {
             });
             setFilters({});
             setSearch("");
-            setStatus("");
+            setStatus("all");
             setMine(false);
             setOffset(0);
             setUnread(0);
@@ -519,7 +521,7 @@ function App() {
     setMenuOpen(false);
     setPage(p);
     setSelected(null);
-    setStatus("");
+    setStatus(p === "tickets" ? "active" : "all");
     setSearch("");
     setMine(false);
     setOffset(0);
@@ -864,7 +866,8 @@ function App() {
                       setOffset(0);
                     }}
                   >
-                    <option value="">All statuses</option>
+                    <option value="active">Active tickets</option>
+                    <option value="all">All tickets</option>
                     {statuses.map((s) => (
                       <option value={s} key={s}>
                         {label(s)}
@@ -917,7 +920,9 @@ function App() {
                     onFilters={(v) => {
                       setFilters(v);
                       setSearch(v.q || "");
-                      setStatus(v.status || "");
+                      setStatus(
+                        v.status || (v.kind === "support" ? "active" : "all"),
+                      );
                       setMine(v.mine || false);
                       setPage(
                         v.kind === "bug"
@@ -1088,7 +1093,9 @@ function App() {
                   </div>
                 ) : (
                   <div className="kanban" aria-busy={busy}>
-                    {statuses.map((s) => (
+                    {statuses
+                      .filter((s) => status !== "active" || s !== "closed")
+                      .map((s) => (
                       <section
                         className="kanban-column"
                         key={s}
@@ -1146,7 +1153,7 @@ function App() {
                             </button>
                           ))}
                       </section>
-                    ))}
+                      ))}
                   </div>
                 )}
                 <div className="panel-footer">

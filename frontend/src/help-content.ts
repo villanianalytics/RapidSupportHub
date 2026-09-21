@@ -359,7 +359,7 @@ export const guides: Guide[] = [
         steps: [
           "Tap the menu button at the top left to open labeled navigation.",
           "Choose a workspace. Tickets appear as cards on smaller screens.",
-          "Tap More filters & saved views to show additional filters. Tap a ticket title to open its details.",
+          "Support tickets initially shows active tickets and excludes closed work. Choose All tickets from the status filter when you need the full history. Tap More filters & saved views to show additional filters, or tap a ticket title to open its details.",
         ],
       },
       {

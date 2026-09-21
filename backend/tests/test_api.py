@@ -447,6 +447,13 @@ def test_resolution_approval_rejection_and_concurrency(setup):
         headers=users["alice"],
     ).json()
     assert closed["status"] == "closed"
+    assert t["id"] in [item["id"] for item in client.get("/api/tickets").json()]
+    assert t["id"] not in [
+        item["id"] for item in client.get("/api/tickets?include_closed=false").json()
+    ]
+    assert [
+        item["id"] for item in client.get("/api/tickets?status=closed&include_closed=false").json()
+    ] == [t["id"]]
     assert client.post(url + "/messages", json={"body": "late"}).status_code == 422
 
 

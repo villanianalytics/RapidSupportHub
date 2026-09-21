@@ -973,7 +973,7 @@ test("overview cards navigate to their ticket sections", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Support tickets", exact: true }),
   ).toBeVisible();
-  await expect(page.getByLabel("Filter by status")).toHaveValue("");
+  await expect(page.getByLabel("Filter by status")).toHaveValue("active");
 
   for (const [card, status] of [
     [/In progress:.*Show in-progress/, "in_progress"],
